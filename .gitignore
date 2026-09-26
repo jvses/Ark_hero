@@ -1,0 +1,14 @@
+# saidas de build
+/build/
+/dist/
+/prebuilt/
+/third_party/sdl3-*/
+/third_party/src/*/
+
+# material de referencia pesado (nao versionar)
+/2048plus.zip
+/portmaster_exemplo_jogo/
+/cmake-4.4.3.tar.gz
+
+# tarballs de dependencia: decidir depois se versiona ou baixa por script
+# (SDL3 tem ~15MB; da pra versionar, mas avalie Git LFS)

@@ -1,0 +1,66 @@
+
+saídas dos comandos pedidos para melhor contexto
+
+ark@rg351mp:~/src$ ldd --version
+ldd (Debian GLIBC 2.41-12+deb13u3) 2.41
+Copyright (C) 2024 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+Written by Roland McGrath and Ulrich Drepper.
+ark@rg351mp:~/src$ uname -m
+aarch64
+ark@rg351mp:~/src$ source /roms/tools/PortMaster/control.txt
+# RG351MP - dArkOS
+```bash
+DEVICE_INFO_VERSION=0.1.15
+PM_VERSION=2026.06.23-0015
+CFW_NAME=dArkOS
+CFW_VERSION=09022026
+CFW_GLIBC=241
+DEVICE_NAME=RG351MP
+DEVICE_CPU=RK3326
+DEVICE_ARCH=aarch64
+DEVICE_RAM=1
+DEVICE_HAS_ARMHF="Y"
+DEVICE_HAS_AARCH64="Y"
+DEVICE_HAS_X86="N"
+DEVICE_HAS_X86_64="N"
+DISPLAY_WIDTH=640
+DISPLAY_HEIGHT=480
+DISPLAY_ORIENTATION=0
+ASPECT_X=4
+ASPECT_Y=3
+ANALOG_STICKS=2
+```
+basename: invalid option -- 'b'
+Try 'basename --help' for more information.
+ark@rg351mp:~/src$ ls /dev/dri/
+by-path  card0  controlD64  renderD128
+ark@rg351mp:~/src$ ls /usr/lib/ | grep -i -E 'SDL|EGL|GLESv2|asound'
+libSDL_image-1.2.so.0
+libSDL_image-1.2.so.0.8.4
+ark@rg351mp:~/src$ ls /usr/include/ | grep -E 'drm|EGL|GLES|alsa'
+alsa
+drm
+EGL
+GLES
+GLES2
+GLES3
+libdrm
+xf86drm.h
+xf86drmMode.h
+ark@rg351mp:~/src$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:           895Mi       259Mi       352Mi        11Mi       309Mi       635Mi
+Swap:             0B          0B          0B
+ark@rg351mp:~/src$ cat /etc/os-release
+PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+NAME="Debian GNU/Linux"
+VERSION_ID="13"
+VERSION="13 (trixie)"
+VERSION_CODENAME=trixie
+DEBIAN_VERSION_FULL=13.6
+ID=debian
+HOME_URL="https://www.debian.org/"
+SUPPORT_URL="https://www.debian.org/support"
+BUG_REPORT_URL="https://bugs.debian.org/"
