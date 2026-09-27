@@ -41,6 +41,8 @@ add_executable(arkhero
     src/platform/input.c
 )
 
+target_include_directories(arkhero PRIVATE src)
+
 target_link_libraries(arkhero PRIVATE SDL3::SDL3)
 
 target_compile_options(arkhero PRIVATE

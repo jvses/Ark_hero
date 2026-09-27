@@ -8,7 +8,12 @@
 typedef struct{
     SDL_JoystickID which;
     SDL_Gamepad *gamepad;
+    bool sair;
 } Input;
 
+
+bool Input_init(Input *inp);
+void Input_quit(Input *inp);
+void Input_Event_Handler(Input *inp,const SDL_Event *ev);
 
 #endif

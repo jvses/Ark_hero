@@ -1,18 +1,43 @@
-#include "platform/video.h"
+// #include <SDL3/SDL_init.h>
+#include "platform/input.h"
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_log.h>
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_timer.h>
+#include <stdint.h>
+#include <sys/types.h>
 #define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
-
+#include <SDL3/SDL_main.h>
+#include "platform/video.h"
 #include "app.h"
 
-App jogo;
+
+// static SDL_Time 
+
+// App jogo;
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
+    App *jogo = SDL_calloc(1, sizeof(App));
+    if (!jogo) return SDL_APP_FAILURE;
+    *appstate = jogo;            /* a partir daqui a SDL entrega o app(jogo) para os outros callbacks */
+
     SDL_SetAppMetadata("Ark Hero", "0.1", "ArkHero_Game");
-    if(!Video_init(&jogo.video)){
-        return SDL_APP_FAILURE;
-    }
+    
+    //parte responsável pelo vídeo/tela
+    if(!Video_init(&jogo->video)) return SDL_APP_FAILURE;
+    else SDL_Log("Vídeo initialized correctly");
+    jogo->video.fps_inicio = jogo->video.frame_anterior = SDL_GetTicks();
+    jogo->video.fps_frames=0;
+    jogo->video.cor=20;
+    jogo->video.razao=1;
+    
+    //parte responsável pelo input/gamepad
+    if(!Input_init(&jogo->input)) return SDL_APP_FAILURE;
+    else SDL_Log("Input/Gamepad initialized correctly");
+
+    jogo->input.sair = false;
 
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
@@ -20,9 +45,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 /* This function runs when a new event (mouse input, keypresses, etc) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
+    App *jogo=appstate;
+
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
     }
+
+    Input_Event_Handler(&jogo->input,event);
 
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
@@ -30,15 +59,49 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
+    const Uint64 agora=SDL_GetTicks();//variavel captacao de tempo
+
+    App *jogo=appstate;
 
 
+    Clear_screen(&jogo->video, 50);
+    Draw_Rectangle(&jogo->video, jogo->video.cor);
+    Video_RenderAll(&jogo->video);
+    // SDL_Delay(1);
+    // SDL_Log("Log antes: cor= %d\nrazao(passo)=%d",jogo->video.cor,jogo->video.razao);
+    if(jogo->video.cor>=254){
+        jogo->video.razao = -1;
+    } else if(jogo->video.cor<50){
+        jogo->video.razao = 1;
+    }
+    jogo->video.cor+=jogo->video.razao;
+    // SDL_Log("Log depois: i= %d\nrazao=%d",jogo->video.cor,jogo->video.razao);
+
+    //processo para contagem de fps
+    const Uint64 intervalo = agora - jogo->video.frame_anterior;
+    jogo->video.frame_anterior = agora;
+    jogo->video.fps_frames++;
+    if (agora - jogo->video.fps_inicio >= 1000) {//se a diferença de tempo entre o primeiro frame e o agora for >= 1000 então passou 1 segundo
+        jogo->video.fps =  jogo->video.fps_frames *1000.0f/ (float)(agora - jogo->video.fps_inicio);
+        SDL_Log("FPS %.1f",jogo->video.fps);
+        jogo->video.fps_inicio = agora;
+        jogo->video.fps_frames=0;
+
+    }
+
+    if (jogo->input.sair) {
+        return SDL_APP_SUCCESS;
+    }
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+    App *jogo = appstate;
     /* SDL will clean up the window/renderer for us. */
+    Video_quit(&jogo->video);
+    SDL_free(jogo);
     SDL_Quit();
 }
 
@@ -100,8 +163,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 //     return t;
 // }
 
-// /* Tudo isto e impresso ANTES de criar a janela, de proposito: se a criacao
-//    falhar, o log ja diz em que ambiente ela falhou. */
+/* Tudo isto e impresso ANTES de criar a janela, de proposito: se a criacao
+   falhar, o log ja diz em que ambiente ela falhou. */
 // static void log_drivers(void)
 // {
 //     const int v = SDL_GetVersion();
