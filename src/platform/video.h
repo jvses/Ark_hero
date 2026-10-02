@@ -30,10 +30,10 @@ typedef struct {
 bool Video_init(Video *vid);
 void Video_quit(Video *vid);
 void log_drivers(void);
+static SDL_Renderer *create_renderer(SDL_Window *win);
 void Clear_screen(Video *vid,int color);
 void Draw_Rectangle(Video *vid, int color);
 void Video_print_fps(Video *vid,float val);
 void Video_RenderAll(Video *vid);
 
 #endif
-// Você tem repetido muitas vezes que o SDL tem um Vsinc embutido e que ele controla o FPS. Onde isso é configurado? Ele já tem um padrão a ser seguido/ configurado de FPS? Como posso visualizar isso? Pensei em usar o parâmetro appname da função SDL_SetAppMetadata para colcoar o FPS durante a execução para checar isso. Mas não manjo ainda das funções de timer. 

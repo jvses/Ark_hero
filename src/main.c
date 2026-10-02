@@ -101,6 +101,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     App *jogo = appstate;
     /* SDL will clean up the window/renderer for us. */
     Video_quit(&jogo->video);
+    Input_quit(&jogo->input);
     SDL_free(jogo);
     SDL_Quit();
 }

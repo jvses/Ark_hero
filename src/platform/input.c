@@ -15,7 +15,8 @@ bool Input_init(Input *inp){
 }
 
 void Input_quit(Input *inp){
-
+    SDL_CloseGamepad(inp->gamepad);
+    inp->gamepad = NULL;
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 
 }

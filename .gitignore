@@ -1,14 +1,30 @@
-# saidas de build
+# saidas de build (tudo regeneravel pelos scripts em tools/)
 /build/
 /dist/
 /prebuilt/
 /third_party/sdl3-*/
-/third_party/src/*/
+/third_party/src/SDL3-3.4.16/
+#/third_party/src/*/
 
 # material de referencia pesado (nao versionar)
 /2048plus.zip
 /portmaster_exemplo_jogo/
 /cmake-4.4.3.tar.gz
+/tools/SDL_examples/
 
-# tarballs de dependencia: decidir depois se versiona ou baixa por script
-# (SDL3 tem ~15MB; da pra versionar, mas avalie Git LFS)
+# notas pessoais de estudo (ficam so na maquina local)
+/Apostila_SDL3.md
+/ARQUITETURA.md
+/BUILD.md
+/CONVERSA_INICIAL.md
+/checklista_R36S.txt
+/notas/
+/CLAUDE.md
+/.claude/
+
+# editor e ferramentas
+/.vscode/
+/.cache/
+compile_commands.json
+*.o
+*.swp

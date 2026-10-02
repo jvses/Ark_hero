@@ -34,7 +34,7 @@ bool Video_init(Video *vid){
         return false;
     }
 
-    vid->Render_Ark = SDL_CreateRenderer(vid->Window_Ark, NULL);
+    vid->Render_Ark = create_renderer(vid->Window_Ark);//SDL_CreateRenderer(vid->Window_Ark, NULL);
     if (!vid->Render_Ark) {
         return false;
     }
@@ -91,6 +91,29 @@ void log_drivers(void)
         SDL_strlcat(buf, " ", sizeof(buf));
     }
     SDL_Log("render disp.  : %s", buf);
+}
+
+static SDL_Renderer *create_renderer(SDL_Window *win)
+{
+    const char *tries[4];
+    int n = 0;
+
+    const char *forced = SDL_getenv("ARKHERO_RENDER_DRIVER");
+    if (forced && *forced) tries[n++] = forced;
+    tries[n++] = "opengles2";   /* o backend do handheld */
+    tries[n++] = NULL;          /* deixa a SDL escolher */
+    tries[n++] = "software";    /* ultimo recurso */
+
+    for (int i = 0; i < n; i++) {
+        SDL_Renderer *r = SDL_CreateRenderer(win, tries[i]);
+        if (r) {
+            SDL_Log("render em uso : %s", SDL_GetRendererName(r));
+            return r;
+        }
+        SDL_Log("renderer '%s' falhou: %s",
+                tries[i] ? tries[i] : "(automatico)", SDL_GetError());
+    }
+    return NULL;
 }
 
 void Clear_screen(Video *vid,int color){
