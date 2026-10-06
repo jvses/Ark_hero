@@ -45,4 +45,4 @@ third_party/    código-fonte das dependências (SDL3, Lua)
 
 Este é um projeto de aprendizado de C, SDL3 e Lua. O código do jogo é escrito
 por mim; uso IA como orientadora, para tirar dúvidas, discutir abordagens e
-entender melhor a biblioteca e o código.
+entender melhor a biblioteca e o código. Os scripts de compilação, docker e empacotamento foram feitos quase inteiramente com IA, mas o código do jogo é escrito por mim.
