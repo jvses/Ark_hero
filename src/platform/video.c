@@ -4,6 +4,8 @@
 #include <SDL3/SDL_video.h>
 // #include <SDL3/SDL_log.h>
 
+static SDL_Renderer *create_renderer(SDL_Window *win);
+
 
 bool Video_init(Video *vid){
     // SDL_SetAppMetadata("Ark Hero", "0.1", "ArkHero_Game");
@@ -23,7 +25,7 @@ bool Video_init(Video *vid){
 
     /* No handheld o script de launch exporta ARKHERO_FULLSCREEN=1.
        No desktop fica em janela, que e mais pratico pra desenvolver. */
-    SDL_WindowFlags flags = SDL_WINDOW_OPENGL;
+    SDL_WindowFlags flags = (SDL_WINDOW_OPENGL);//| SDL_WINDOW_RESIZABLE);
     const char *fs = SDL_getenv("ARKHERO_FULLSCREEN");
     if (fs && SDL_strcmp(fs, "1") == 0) flags |= SDL_WINDOW_FULLSCREEN;
 
@@ -34,19 +36,22 @@ bool Video_init(Video *vid){
         return false;
     }
 
-    vid->Render_Ark = create_renderer(vid->Window_Ark);//SDL_CreateRenderer(vid->Window_Ark, NULL);
-    if (!vid->Render_Ark) {
+    vid->ds_render.render = create_renderer(vid->Window_Ark);//SDL_CreateRenderer(vid->Window_Ark, NULL);
+    if (!vid->ds_render.render) {
         return false;
     }
 
-    if (!SDL_SetRenderVSync(vid->Render_Ark, 1) &&
-        !SDL_SetRenderVSync(vid->Render_Ark, SDL_RENDERER_VSYNC_ADAPTIVE)) {
+    if (!SDL_SetRenderVSync(vid->ds_render.render, 1) &&
+        !SDL_SetRenderVSync(vid->ds_render.render, SDL_RENDERER_VSYNC_ADAPTIVE)) {
         SDL_Log("[video] sem vsync: %s", SDL_GetError());
     }
-    // if(!SDL_SetRenderVSync(vid->Render_Ark, 1)){//esse comando faz o Vsinc e faz o jogo acompanhar o fps padrão da tela do hardware que estiver rodando. Se o hardware puder fazer 144Hz ele faz, se for menor ele ajusta para esse valor menor.
+
+    //Comando que ajusta as dimensões para 640x480 nos comandos do render independente da resolução da tela em que tudo é exibido
+    SDL_SetRenderLogicalPresentation(vid->ds_render.render, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    // if(!SDL_SetRenderVSync(vid->ds_render.render, 1)){//esse comando faz o Vsinc e faz o jogo acompanhar o fps padrão da tela do hardware que estiver rodando. Se o hardware puder fazer 144Hz ele faz, se for menor ele ajusta para esse valor menor.
 
     //     SDL_Log("Vsinc Not suported error: %s\nTring adaptative mode",SDL_GetError());
-    //     if(!SDL_SetRenderVSync(vid->Render_Ark, -1)){
+    //     if(!SDL_SetRenderVSync(vid->ds_render.render, -1)){
     //         SDL_Log("Vsinc adaptative mode error: %s",SDL_GetError());
     //         return false;
     //     }
@@ -56,8 +61,8 @@ bool Video_init(Video *vid){
 
 void Video_quit(Video *vid){
 
-    if(vid->Render_Ark)
-        SDL_DestroyRenderer(vid->Render_Ark);
+    if(vid->ds_render.render)
+        SDL_DestroyRenderer(vid->ds_render.render);
 
     if(vid->Window_Ark)
         SDL_DestroyWindow(vid->Window_Ark);
@@ -116,27 +121,8 @@ static SDL_Renderer *create_renderer(SDL_Window *win)
     return NULL;
 }
 
-void Clear_screen(Video *vid,int color){
-    SDL_SetRenderDrawColor(vid->Render_Ark, color, color, color, SDL_ALPHA_OPAQUE);
-    SDL_RenderClear(vid->Render_Ark);
-    // SDL_RenderPresent(vid->Render_Ark); // coloca tudo na tela
-}
 
-void Draw_Rectangle(Video *vid, int color){
-    SDL_FRect rec;
-    rec.x = DEFAULT_WIDTH/4;
-    rec.y = DEFAULT_HEIGTH/4;
-    rec.w = DEFAULT_WIDTH/2;
-    rec.h = DEFAULT_HEIGTH/2;
-    SDL_SetRenderDrawColor(vid->Render_Ark, color, color, color, SDL_ALPHA_OPAQUE);
-    SDL_RenderFillRect(vid->Render_Ark, &rec);
-    //SDL_RenderPresent(vid->Render_Ark); // coloca tudo na tela
-}
-
-void Video_print_fps(Video *vid,float val){
-    SDL_RenderDebugTextFormat(vid->Render_Ark,  0,  0, "FPS: %.2f", val);
-}
 
 void Video_RenderAll(Video *vid){
-    SDL_RenderPresent(vid->Render_Ark); // coloca tudo na tela
+    SDL_RenderPresent(vid->ds_render.render); // coloca tudo na tela
 }

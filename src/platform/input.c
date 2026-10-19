@@ -2,7 +2,9 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3/SDL_scancode.h>
 
 
 
@@ -21,6 +23,9 @@ void Input_quit(Input *inp){
 
 }
 void Input_Event_Handler(Input *inp,const SDL_Event *ev){
+
+    // const bool* keys = SDL_GetKeyboardState(NULL); 
+
     switch (ev->type) {
         case SDL_EVENT_GAMEPAD_ADDED:
             if(!inp->gamepad){
@@ -47,10 +52,54 @@ void Input_Event_Handler(Input *inp,const SDL_Event *ev){
                 inp->sair = true;
             }
             break;
+        
+        case SDL_EVENT_KEY_DOWN: // arma a flag quando ver que está presionado e avisa qual botão
+            // SDL_Log("Tecla foi apertada %d",ev->key.scancode);
+            switch (ev->key.scancode) {
+                case SDL_SCANCODE_RIGHT:
+                    inp->setas.right = true;
+                    break;
+                case SDL_SCANCODE_LEFT:
+                    inp->setas.left = true;
+                    break;
+                case SDL_SCANCODE_UP:
+                    inp->setas.up = true;
+                    break;
+                case SDL_SCANCODE_DOWN:
+                    inp->setas.down = true;
+                    break;
+            }
+            break;
+        // case SDL_EVENT_KEY_UP: 
+        //     inp->setas=none;
+        //     SDL_Log("Zerando a flag da seta");
+        //     break;
+        case SDL_EVENT_KEY_UP: //desarma a flag quando vê que tecla foi solta 
+            switch (ev->key.scancode) {
+                case SDL_SCANCODE_RIGHT:
+                    inp->setas.right = false;
+                    break;
+                case SDL_SCANCODE_LEFT:
+                    inp->setas.left = false;
+                    break;
+                case SDL_SCANCODE_UP:
+                    inp->setas.up = false;
+                    break;
+                case SDL_SCANCODE_DOWN:
+                    inp->setas.down = false;
+                    break;
+                // default:
+            }
+        break;
     
     }
 
 }
 
-
-
+void Input_update_gl_arrows(Input *inp,Game_logic_State *gl){
+        gl->dir_keys.up=inp->setas.up;
+        gl->dir_keys.down=inp->setas.down;
+        gl->dir_keys.right=inp->setas.right;
+        gl->dir_keys.left=inp->setas.left;
+    // SDL_Log("espelhando flags direcionais");
+}

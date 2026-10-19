@@ -13,27 +13,20 @@
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_rect.h>
+#include "../draw/desenhos.h"
 
-#define DEFAULT_WIDTH 640
-#define DEFAULT_HEIGTH 480
+
 
 typedef struct {
     SDL_Window* Window_Ark;
-    SDL_Renderer* Render_Ark;
-    int16_t cor,razao;
-    Uint64 fps_inicio;//instante em ms começo
-    Uint64 frame_anterior;//instante do frame anterior(ms)
-    int fps_frames;//frames condados no segundo atual
-    float fps;//valor mostrado na tela
+    // SDL_Renderer* Render_Ark;
+    Drawing_state ds_render;
 }Video;
 
 bool Video_init(Video *vid);
 void Video_quit(Video *vid);
 void log_drivers(void);
-static SDL_Renderer *create_renderer(SDL_Window *win);
-void Clear_screen(Video *vid,int color);
-void Draw_Rectangle(Video *vid, int color);
-void Video_print_fps(Video *vid,float val);
+// static SDL_Renderer *create_renderer(SDL_Window *win);
 void Video_RenderAll(Video *vid);
 
 #endif

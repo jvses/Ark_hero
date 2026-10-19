@@ -39,6 +39,10 @@ add_executable(arkhero
     src/main.c
     src/platform/video.c
     src/platform/input.c
+    src/platform/input.c
+    src/draw/desenhos.c
+    src/game/game_state.c
+    
 )
 
 target_include_directories(arkhero PRIVATE src)
