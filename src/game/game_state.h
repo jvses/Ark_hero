@@ -55,8 +55,11 @@ typedef struct {
     float rec_addr[2];
     Arrows dir_keys;//flags para guargar estado de botões de direção
     uint8_t game_menu_state; //deve armazenar valores de Menu_table e julgar estado do game
+    bool apertou_P; //flags de troca de estado para botão de menu e troca da bg_image
 } Game_logic_State;
 
+
+void GS_change_game_menu(Game_logic_State *gl);
 void GS_rec_move(Game_logic_State *gl);
 
 

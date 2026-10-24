@@ -15,6 +15,17 @@
 
 // static SDL_Time 
 
+
+// //funções para despoluir as callback
+// void update_video_screen(){
+
+// }
+
+
+
+
+
+
 // App jogo;
 
 /* This function runs once at startup. */
@@ -36,10 +47,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     jogo->game_lg.game_menu_state=idle;
     jogo->game_lg.rec_addr[0]=200;
     jogo->game_lg.rec_addr[1]=300;
+    jogo->game_lg.game_menu_state = idle;
+    jogo->game_lg.apertou_P = false;
+
     
     //parte responsável pelo input/gamepad
     if(!Input_init(&jogo->input)) return SDL_APP_FAILURE;
     else SDL_Log("Input/Gamepad initialized correctly");
+
+    //inicializa valores de botão do menu em false
+    jogo->input.menu_btn.atual=false;
+    jogo->input.menu_btn.anterior = false;
+
+    Draw_memory_prepare_stuffs(&jogo->video.ds_render,&jogo->game_lg);
 
     jogo->input.sair = false;
 
@@ -68,19 +88,25 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     App *jogo=appstate;
 
 
-    Clear_screen(&jogo->video.ds_render, 50);
+    Clear_screen(&jogo->video.ds_render);
+    jogo->game_lg.apertou_P = Input_update_gl_menu(&jogo->input);
+
+    // bool need_change_bg=false;
+    GS_change_game_menu(&jogo->game_lg);// vai ver se tem ou não que alterar o estado do menu do jogo e mudar de acordo.
+    if(jogo->game_lg.apertou_P){
+        Draw_memory_prepare_stuffs(&jogo->video.ds_render,&jogo->game_lg);
+        SDL_Log("Menu: %d",jogo->game_lg.game_menu_state);
+        jogo->game_lg.apertou_P=false;
+    }
+
+    Draw_bg_image(&jogo->video.ds_render,&jogo->game_lg);
     Draw_Rectangle(&jogo->video.ds_render, jogo->game_lg.cor_bg);
     Input_update_gl_arrows(&jogo->input,&jogo->game_lg);
     GS_rec_move(&jogo->game_lg);//aqui altera o endereço do retângulo que se move
-    // Input_zerar_setas(&jogo->input);
     Draw_music_tab(&jogo->video.ds_render);
-
-    // Draw_FillRectangle(&jogo->video.ds_render,jogo->game_lg.rec_addr[0],jogo->game_lg.rec_addr[1],Draw_get_color(azul));
     Draw_Elipse(&jogo->video.ds_render,jogo->game_lg.rec_addr[0],jogo->game_lg.rec_addr[1],100,70,Draw_get_color(azul));
     
-    // Video_RenderAll(&jogo->video);
-    // SDL_Delay(1);
-    // SDL_Log("Log antes: cor= %d\nrazao(passo)=%d",jogo->video.cor,jogo->video.razao);
+
     if(jogo->game_lg.cor_bg>=254){
         jogo->game_lg.razao = -1;
     } else if(jogo->game_lg.cor_bg<50){
@@ -106,6 +132,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     if (jogo->input.sair) {
         return SDL_APP_SUCCESS;
     }
+
+
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 

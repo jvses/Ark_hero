@@ -5,6 +5,7 @@
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_scancode.h>
+#include <stdbool.h>
 
 
 
@@ -68,6 +69,11 @@ void Input_Event_Handler(Input *inp,const SDL_Event *ev){
                 case SDL_SCANCODE_DOWN:
                     inp->setas.down = true;
                     break;
+                case SDL_SCANCODE_P://tecla P para teste de troca das imagens de fundo
+                    inp->menu_btn.atual = true;
+                    // SDL_Log("[input] P foi apertado");
+                    break;
+                    
             }
             break;
         // case SDL_EVENT_KEY_UP: 
@@ -88,6 +94,9 @@ void Input_Event_Handler(Input *inp,const SDL_Event *ev){
                 case SDL_SCANCODE_DOWN:
                     inp->setas.down = false;
                     break;
+                case SDL_SCANCODE_P: //tecla P para teste de troca das imagens de fundo
+                    inp->menu_btn.atual = false;
+                    break;
                 // default:
             }
         break;
@@ -102,4 +111,20 @@ void Input_update_gl_arrows(Input *inp,Game_logic_State *gl){
         gl->dir_keys.right=inp->setas.right;
         gl->dir_keys.left=inp->setas.left;
     // SDL_Log("espelhando flags direcionais");
+}
+
+bool Input_update_gl_menu(Input *inp){
+    //checagem se apertou
+    if(inp->menu_btn.atual && !inp->menu_btn.anterior){
+        inp->menu_btn.anterior = inp->menu_btn.atual;
+        // SDL_Log("[input] Estado do botão P foi de up-down, troca de menu realizada");
+        return true;//retorna para troca de menu(botão apertado) 
+    }
+    else {
+        inp->menu_btn.anterior = inp->menu_btn.atual;//atualiza os valores geralemtne aqui vai se manter em false
+        // SDL_Log("[input] Estado do botão P constante troca de menu não realizada");
+        return false;
+    }
+
+
 }

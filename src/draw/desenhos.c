@@ -1,11 +1,40 @@
 #include "desenhos.h"
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_render.h>
+// #include <cstdio>
 
-void Clear_screen(Drawing_state *ds,int bg_color){
-    SDL_SetRenderDrawColor(ds->render, bg_color, bg_color, bg_color, SDL_ALPHA_OPAQUE);
+void Clear_screen(Drawing_state *ds){//apaga tudo dentro do render
+    // SDL_SetRenderDrawColor(ds->render, bg_color, bg_color, bg_color, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(ds->render);
     // SDL_RenderPresent(ds->render); // coloca tudo na tela
+}
+
+void Draw_memory_prepare_stuffs(Drawing_state *ds,Game_logic_State *gl){// essa função vai ajustar figura de bg do jogo de acordo com os estados e já deixar a textura na memória
+        char caminho[40];
+    switch (gl->game_menu_state) {
+        case idle:
+            snprintf(caminho, sizeof(caminho),"assets/images/vaporwave_guitar1.png");
+            break;
+        case gameplay:
+            snprintf(caminho,sizeof(caminho), "assets/images/vaporwave_guitar2.png");
+            break;
+        case config:
+            snprintf(caminho,sizeof(caminho), "assets/images/vaporwave_guitar3.png");
+            break;
+    }
+    SDL_Surface *s = SDL_LoadPNG(caminho);
+    if (!s) {
+        SDL_Log("nao carreguei '%s': %s", caminho, SDL_GetError());
+        // return SDL_APP_FAILURE;
+    }
+    ds->fundo = SDL_CreateTextureFromSurface(ds->render, s);
+    SDL_DestroySurface(s);
+    SDL_SetTextureBlendMode(ds->fundo, SDL_BLENDMODE_NONE);   /* fundo é opaco: o modo mais barato */
+}
+
+void Draw_bg_image(Drawing_state *ds,Game_logic_State *gl){
+    SDL_RenderTexture(ds->render, ds->fundo, NULL, NULL);
+    
 }
 
 void Draw_Rectangle(Drawing_state *ds, int color){
@@ -35,11 +64,6 @@ void Draw_FillRectangle(Drawing_state *ds,float x, float y, SDL_Color cor){//des
     SDL_RenderFillRect(ds->render, &rec);
 }
 /*
-quero fazer algumas funções para criar os recursos gráficos que vou usar por enquanto e preciso de ajuda para me esclarecer algumas coisas.
-1) o mais difícil pra mim no momento é um meio para fazer as elipses, preciso fazer uma função que as desenhe que tenha como parâmetro de entrada o endereço do centro, largura, altura e cores RGB da elipse.
-2) em seguida quero saber se o SDL3 já tem suporte a desenhar blocos(retângulos para botões) que consigam ajustar automaticamente o seu tamanho  de acordo com os textos que quero colocar dentro deles. 
-3) Acredito ter visto que posso usar uma "virtualização" de dimensões no SDL para eu manter o desenvolvimento dos desenhos com dimensões 640x480 para situações onde o display é maior e a tela tem uma resolução maior que o que estou preparando no jogo. quero sabser como implementar isso
-4) quero que me diga um método/estratégia para eu criar uma linha de cima para baixo com alguma inclinação(fazer a linha é fácil eu sei) mas de maneira que um círculo percorra essa linha indo de cima para baixo com sua origem seguindo essa linha.
 
 */
 

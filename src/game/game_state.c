@@ -1,6 +1,22 @@
 #include "game_state.h"
 
 
+void GS_change_game_menu(Game_logic_State *gl){
+    if(gl->apertou_P){
+        //troca de menu caso houve troca;
+        if(gl->game_menu_state == idle){
+            gl->game_menu_state = gameplay;
+        } else if(gl->game_menu_state == gameplay){
+            gl->game_menu_state = config;
+        } else if(gl->game_menu_state == config){
+            gl->game_menu_state = idle;
+        }
+        //vou deixar para trocar estado da variável no main.c reconhece a troca lá e ajeita a flag lá
+        // gl->apertou_P = false;
+    }
+    // gl->game_menu_state = new_menu;
+}
+
 void GS_rec_move(Game_logic_State *gl){
     float xspeed=5,yspeed=5;
     if(gl->dir_keys.up){
@@ -15,18 +31,4 @@ void GS_rec_move(Game_logic_State *gl){
     if(gl->dir_keys.left){
         gl->rec_addr[0] = gl->rec_addr[0] - 5;
     }
-    // switch (key_flag) {
-    //     case up:
-    //         gl->rec_addr[1] = gl->rec_addr[1] - 5;
-    //         break;
-    //     case down:
-    //         gl->rec_addr[1] = gl->rec_addr[1] + 5;
-    //         break;
-    //     case right:
-    //         gl->rec_addr[0] = gl->rec_addr[0] + 5;
-    //         break;
-    //     case left:
-    //         gl->rec_addr[0] = gl->rec_addr[0] - 5;
-    //         break;
-    // }
 }

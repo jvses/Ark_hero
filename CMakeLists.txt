@@ -62,3 +62,16 @@ set_target_properties(arkhero PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN/libs.${ARKHERO_ARCH}"
 )
+
+# ---------------------------------------------------------------------------
+# Dados do jogo (imagens, depois scripts Lua). O jogo le tudo a partir de
+# SDL_GetBasePath(), a pasta do executavel. No console o pacote tem a pasta
+# assets/ copiada de verdade (tools/package_port.sh). Aqui no build, um link
+# simbolico para a pasta do repositorio: editou um arquivo, o jogo ja enxerga,
+# sem recompilar e sem copiar nada.
+# ---------------------------------------------------------------------------
+add_custom_command(TARGET arkhero POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E rm -f $<TARGET_FILE_DIR:arkhero>/assets
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:arkhero>/assets
+)

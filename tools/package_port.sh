@@ -19,6 +19,13 @@ cp "$ROOT/packaging/portmaster/Ark Hero.sh" "$DIST/"
 cp -r "$ROOT/packaging/portmaster/arkhero/." "$PORT/"
 chmod +x "$DIST/Ark Hero.sh"
 
+# 1b) dados do jogo (imagens, depois scripts). Copia de verdade, sem symlink:
+#     a particao de ROMS e FAT32/exFAT. O -L resolve qualquer link no caminho.
+if [ -d "$ROOT/assets" ]; then
+    cp -rL "$ROOT/assets" "$PORT/assets"
+    echo "++ incluido assets/ ($(du -sh "$PORT/assets" | cut -f1))"
+fi
+
 # 2) binarios + libs, por arquitetura
 FOUND=0
 for ARCH in aarch64 x86_64; do
