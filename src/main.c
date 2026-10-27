@@ -47,7 +47,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     jogo->game_lg.game_menu_state=idle;
     jogo->game_lg.rec_addr[0]=200;
     jogo->game_lg.rec_addr[1]=300;
-    jogo->game_lg.game_menu_state = idle;
+    jogo->game_lg.game_menu_state = jogo->game_lg.game_menu_state_selected = idle;
     jogo->game_lg.apertou_P = false;
 
     
@@ -93,18 +93,23 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     // bool need_change_bg=false;
     GS_change_game_menu(&jogo->game_lg);// vai ver se tem ou não que alterar o estado do menu do jogo e mudar de acordo.
-    if(jogo->game_lg.apertou_P){
-        Draw_memory_prepare_stuffs(&jogo->video.ds_render,&jogo->game_lg);
-        SDL_Log("Menu: %d",jogo->game_lg.game_menu_state);
-        jogo->game_lg.apertou_P=false;
-    }
+    
+    // if(jogo->game_lg.apertou_P){
+    //     Draw_memory_prepare_stuffs(&jogo->video.ds_render,&jogo->game_lg);
+    //     SDL_Log("Menu: %d",jogo->game_lg.game_menu_state);
+    //     jogo->game_lg.apertou_P=false;
+    // }
 
-    Draw_bg_image(&jogo->video.ds_render,&jogo->game_lg);
-    Draw_Rectangle(&jogo->video.ds_render, jogo->game_lg.cor_bg);
+    // Draw_bg_image(&jogo->video.ds_render,&jogo->game_lg);
+    // Draw_Rectangle(&jogo->video.ds_render, jogo->game_lg.cor_bg);
+    
     Input_update_gl_arrows(&jogo->input,&jogo->game_lg);
     GS_rec_move(&jogo->game_lg);//aqui altera o endereço do retângulo que se move
-    Draw_music_tab(&jogo->video.ds_render);
-    Draw_Elipse(&jogo->video.ds_render,jogo->game_lg.rec_addr[0],jogo->game_lg.rec_addr[1],100,70,Draw_get_color(azul));
+ 
+    Draw_menu_and_bg(&jogo->video.ds_render,&jogo->game_lg);
+
+   // Draw_music_tab(&jogo->video.ds_render);
+    // Draw_Elipse(&jogo->video.ds_render,jogo->game_lg.rec_addr[0],jogo->game_lg.rec_addr[1],100,70,Draw_get_color(azul));
     
 
     if(jogo->game_lg.cor_bg>=254){
@@ -121,7 +126,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     jogo->game_lg.fps_frames++;
     if (agora - jogo->game_lg.fps_inicio >= 1000) {//se a diferença de tempo entre o primeiro frame e o agora for >= 1000 então passou 1 segundo
         jogo->game_lg.fps =  jogo->game_lg.fps_frames *1000.0f/ (float)(agora - jogo->game_lg.fps_inicio);
-        SDL_Log("FPS %.1f",jogo->game_lg.fps);
+        // SDL_Log("FPS %.1f",jogo->game_lg.fps);
         jogo->game_lg.fps_inicio = agora;
         jogo->game_lg.fps_frames=0;
     }

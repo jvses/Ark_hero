@@ -1,6 +1,7 @@
 #include "desenhos.h"
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_render.h>
+#include <stdio.h>
 // #include <cstdio>
 
 void Clear_screen(Drawing_state *ds){//apaga tudo dentro do render
@@ -34,8 +35,72 @@ void Draw_memory_prepare_stuffs(Drawing_state *ds,Game_logic_State *gl){// essa 
 
 void Draw_bg_image(Drawing_state *ds,Game_logic_State *gl){
     SDL_RenderTexture(ds->render, ds->fundo, NULL, NULL);
+}
+
+void Draw_menu_and_bg(Drawing_state *ds,Game_logic_State *gl){
+
+    Draw_bg_image(ds,gl);
+    switch (gl->game_menu_state) {
+        case idle:
+            Draw_menu_idle(ds,gl);
+            break;
+        case gameplay:
+            Draw_music_tab(ds);
+            break;
+        case config:
+            Draw_Rectangle(ds, gl->cor_bg);
+            break;
+    }
+
+}
+
+void Draw_menu_idle(Drawing_state *ds,Game_logic_State *gl){
+    SDL_Color cor = Draw_get_color(branco);//cor de fundo branca para os botões e depois para o texto;
+    const int delta = 50;//espaço entre cada botão
+    const int yinit = 100;
+
+    for (int i=1; i<=3; i++) {
+        SDL_FRect rec = {
+            .x=50,
+            .y=(delta+i*yinit),
+            .w=(8*6),
+            .h=16
+        };
+        cor = Draw_get_color(branco);
+        SDL_SetRenderDrawColor(ds->render,cor.r,cor.g,cor.b,cor.a);
+        SDL_RenderFillRect(ds->render, &rec);
+
+        if(gl->game_menu_state_selected == (i-1)) {
+            cor = Draw_get_color(preto);
+        }
+        else{
+         cor = Draw_get_color(azul);
+        }
+
+        char btn_msg[20];
+        switch (i-1) {
+            case idle:
+            snprintf(btn_msg, sizeof(btn_msg), "Idle");
+                // btn_msg = "Idle";
+                break;
+            case gameplay:
+            snprintf(btn_msg, sizeof(btn_msg), "Play");
+                // btn_msg = "Jogar";
+                break;
+            case config:
+                snprintf(btn_msg, sizeof(btn_msg), "Configure");
+                // btn_msg = "Configurações";
+                break;
+        }
+
+        SDL_SetRenderDrawColor(ds->render,cor.r,cor.g,cor.b,cor.a);
+        SDL_RenderDebugTextFormat(ds->render,  delta,  (delta+i*yinit), "%s",btn_msg);
+        // Draw_FillRectangle(ds, 50, (delta+), fcor);
+    }
     
 }
+
+void Draw_menu_pause(Drawing_state *ds,Game_logic_State *gl);
 
 void Draw_Rectangle(Drawing_state *ds, int color){
     SDL_FRect rec;
@@ -67,12 +132,7 @@ void Draw_FillRectangle(Drawing_state *ds,float x, float y, SDL_Color cor){//des
 
 */
 
-void Draw_menu_init(Drawing_state *ds){
 
-SDL_Color cor;
-
-
-}
 
 // void Draw_triangle(Drawing_state *ds){
 //     SDL_Vertex vertices_triangulo = {.position.x = 165 , .color, .tex_coord };

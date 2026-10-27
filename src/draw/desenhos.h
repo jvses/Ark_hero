@@ -18,12 +18,13 @@
 #define TAB_YD_DELTA 400
 #define TAB_YU (TAB_YD - TAB_YD_DELTA)
 
+//Macros para desenhar as linhas que os charts vão seguir
 #define CHART_UP_DELTA (TAB_XU_DELTA/5)
 #define CHART_DOWN_DELTA (TAB_XD_DELTA/5)
 
-
-
 #define CHART_GREEN_COLUMN_X_INIT 
+
+
 
 typedef struct{
     SDL_Renderer* render;
@@ -42,7 +43,6 @@ typedef enum Colors_draw{
     preto
 }Colors_draw;
 
-
 //acho que não vou precisar de init e/ou quit aqui pois os que manuseio aqui é criado/defetruído na video.h
 void Clear_screen(Drawing_state *ds);
 void Draw_memory_prepare_stuffs(Drawing_state *ds,Game_logic_State *gl);
@@ -50,7 +50,9 @@ void Draw_bg_image(Drawing_state *ds,Game_logic_State *gl);
 void Draw_Rectangle(Drawing_state *ds, int color);
 void Draw_print_fps(Drawing_state *ds,float val);
 void Draw_FillRectangle(Drawing_state *ds,float x, float y, SDL_Color cor);
-void Draw_menu_init(Drawing_state *ds);
+void Draw_menu_and_bg(Drawing_state *ds,Game_logic_State *gl);
+void Draw_menu_idle(Drawing_state *ds,Game_logic_State *gl);
+void Draw_menu_pause(Drawing_state *ds,Game_logic_State *gl);
 void Draw_music_tab(Drawing_state *ds);
 void Draw_Elipse(Drawing_state *ds, float x, float y, float w, float h, SDL_Color cor);
 

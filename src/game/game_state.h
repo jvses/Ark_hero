@@ -54,7 +54,7 @@ typedef struct {
     float fps;//valor mostrado na tela
     float rec_addr[2];
     Arrows dir_keys;//flags para guargar estado de botões de direção
-    uint8_t game_menu_state; //deve armazenar valores de Menu_table e julgar estado do game
+    uint8_t game_menu_state,game_menu_state_selected; //deve armazenar valores de Menu_table e julgar estado do game
     bool apertou_P; //flags de troca de estado para botão de menu e troca da bg_image
 } Game_logic_State;
 
