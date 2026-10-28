@@ -1,0 +1,4 @@
+# O clangd (editor) lê as flags de compilação daqui: includes a partir de src/,
+# SDL3, C11. O arquivo é gerado pelo CMake em ./tools/build_local.sh.
+CompileFlags:
+  CompilationDatabase: build/local

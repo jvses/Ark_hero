@@ -1,32 +1,28 @@
-#ifndef VIDEO_LIB
-#define VIDEO_LIB
+#ifndef ARK_VIDEO_H
+#define ARK_VIDEO_H
 
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_stdinc.h>
-#include <SDL3/SDL_video.h>
+/* Janela, renderer e apresentação. Não sabe nada do jogo nem do que é desenhado. */
+
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_init.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <SDL3/SDL_error.h>
-#include <SDL3/SDL_log.h>
-#include <SDL3/SDL_oldnames.h>
-#include <SDL3/SDL_pixels.h>
-#include <SDL3/SDL_rect.h>
-#include "../draw/desenhos.h"
 
-
+#define VIDEO_LARGURA 640   /* resolução lógica: o jogo inteiro desenha neste espaço */
+#define VIDEO_ALTURA  480
 
 typedef struct {
-    SDL_Window* Window_Ark;
-    // SDL_Renderer* Render_Ark;
-    Drawing_state ds_render;
-}Video;
+    SDL_Window   *janela;
+    SDL_Renderer *ren;
+
+    /* medição do ciclo de apresentação */
+    Uint64 fps_inicio;
+    Uint64 frame_anterior;
+    int    fps_frames;
+    float  fps;
+    Uint64 pior_frame_ms;
+} Video;
 
 bool Video_init(Video *vid);
 void Video_quit(Video *vid);
-void log_drivers(void);
-// static SDL_Renderer *create_renderer(SDL_Window *win);
-void Video_RenderAll(Video *vid);
+void Video_begin_frame(Video *vid);   /* limpa a tela */
+void Video_end_frame(Video *vid);     /* apresenta (o vsync espera aqui) e conta o FPS */
 
 #endif

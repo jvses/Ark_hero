@@ -1,89 +1,19 @@
-#include "video.h"
-#include <SDL3/SDL_gpu.h>
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_video.h>
-// #include <SDL3/SDL_log.h>
+#include "platform/video.h"
 
-static SDL_Renderer *create_renderer(SDL_Window *win);
+#define FPS_LOG_MS 5000   /* de quanto em quanto tempo o FPS vai para o log */
 
-
-bool Video_init(Video *vid){
-    // SDL_SetAppMetadata("Ark Hero", "0.1", "ArkHero_Game");
-    if(!SDL_InitSubSystem(SDL_INIT_VIDEO)){
-        SDL_Log("Video Could not initialize error: %s",SDL_GetError());
-        return false;
-    }
-
-    log_drivers();
-
-    if(
-    !SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES) ||
-    !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2) ||
-    !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0)){
-        SDL_Log("[video] nao consegui pedir o perfil GLES: %s", SDL_GetError());
-    }
-
-    /* No handheld o script de launch exporta ARKHERO_FULLSCREEN=1.
-       No desktop fica em janela, que e mais pratico pra desenvolver. */
-    SDL_WindowFlags flags = (SDL_WINDOW_OPENGL);//| SDL_WINDOW_RESIZABLE);
-    const char *fs = SDL_getenv("ARKHERO_FULLSCREEN");
-    if (fs && SDL_strcmp(fs, "1") == 0) flags |= SDL_WINDOW_FULLSCREEN;
-
-    vid->Window_Ark = SDL_CreateWindow("Ark Hero", DEFAULT_WIDTH, DEFAULT_HEIGTH, flags);
-    
-    if (!vid->Window_Ark) {
-        SDL_Log("Could not create window/render error: %s",SDL_GetError());
-        return false;
-    }
-
-    vid->ds_render.render = create_renderer(vid->Window_Ark);//SDL_CreateRenderer(vid->Window_Ark, NULL);
-    if (!vid->ds_render.render) {
-        return false;
-    }
-
-    if (!SDL_SetRenderVSync(vid->ds_render.render, 1) &&
-        !SDL_SetRenderVSync(vid->ds_render.render, SDL_RENDERER_VSYNC_ADAPTIVE)) {
-        SDL_Log("[video] sem vsync: %s", SDL_GetError());
-    }
-
-    //Comando que ajusta as dimensões para 640x480 nos comandos do render independente da resolução da tela em que tudo é exibido
-    SDL_SetRenderLogicalPresentation(vid->ds_render.render, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
-    // if(!SDL_SetRenderVSync(vid->ds_render.render, 1)){//esse comando faz o Vsinc e faz o jogo acompanhar o fps padrão da tela do hardware que estiver rodando. Se o hardware puder fazer 144Hz ele faz, se for menor ele ajusta para esse valor menor.
-
-    //     SDL_Log("Vsinc Not suported error: %s\nTring adaptative mode",SDL_GetError());
-    //     if(!SDL_SetRenderVSync(vid->ds_render.render, -1)){
-    //         SDL_Log("Vsinc adaptative mode error: %s",SDL_GetError());
-    //         return false;
-    //     }
-    // }
-    return true;
-}
-
-void Video_quit(Video *vid){
-
-    if(vid->ds_render.render)
-        SDL_DestroyRenderer(vid->ds_render.render);
-
-    if(vid->Window_Ark)
-        SDL_DestroyWindow(vid->Window_Ark);
-}
-
-
-void log_drivers(void)
+static void log_drivers(void)
 {
     const int v = SDL_GetVersion();
     char buf[256];
-    int i;
 
-    SDL_Log("===== Ark Hero / teste de portabilidade =====");
-    SDL_Log("SDL compilado : %d.%d.%d",
-            SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_MICRO_VERSION);
-    SDL_Log("SDL runtime   : %d.%d.%d (%s)",
-            SDL_VERSIONNUM_MAJOR(v), SDL_VERSIONNUM_MINOR(v), SDL_VERSIONNUM_MICRO(v),
-            SDL_GetRevision());
+    SDL_Log("===== Ark Hero =====");
+    SDL_Log("SDL compilado : %d.%d.%d", SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_MICRO_VERSION);
+    SDL_Log("SDL runtime   : %d.%d.%d (%s)", SDL_VERSIONNUM_MAJOR(v), SDL_VERSIONNUM_MINOR(v),
+            SDL_VERSIONNUM_MICRO(v), SDL_GetRevision());
 
     buf[0] = '\0';
-    for (i = 0; i < SDL_GetNumVideoDrivers(); i++) {
+    for (int i = 0; i < SDL_GetNumVideoDrivers(); i++) {
         SDL_strlcat(buf, SDL_GetVideoDriver(i), sizeof(buf));
         SDL_strlcat(buf, " ", sizeof(buf));
     }
@@ -91,38 +21,112 @@ void log_drivers(void)
     SDL_Log("video em uso  : %s", SDL_GetCurrentVideoDriver());
 
     buf[0] = '\0';
-    for (i = 0; i < SDL_GetNumRenderDrivers(); i++) {
+    for (int i = 0; i < SDL_GetNumRenderDrivers(); i++) {
         SDL_strlcat(buf, SDL_GetRenderDriver(i), sizeof(buf));
         SDL_strlcat(buf, " ", sizeof(buf));
     }
     SDL_Log("render disp.  : %s", buf);
 }
 
-static SDL_Renderer *create_renderer(SDL_Window *win)
+/* opengles2 primeiro, para o PC testar o mesmo caminho do console */
+static SDL_Renderer *cria_renderer(SDL_Window *janela)
 {
-    const char *tries[4];
+    const char *tentativas[3];
     int n = 0;
 
-    const char *forced = SDL_getenv("ARKHERO_RENDER_DRIVER");
-    if (forced && *forced) tries[n++] = forced;
-    tries[n++] = "opengles2";   /* o backend do handheld */
-    tries[n++] = NULL;          /* deixa a SDL escolher */
-    tries[n++] = "software";    /* ultimo recurso */
+    const char *forcado = SDL_getenv("ARKHERO_RENDER_DRIVER");
+    if (forcado && *forcado) tentativas[n++] = forcado;
+    tentativas[n++] = "opengles2";
+    tentativas[n++] = NULL;   /* deixa a SDL escolher */
 
     for (int i = 0; i < n; i++) {
-        SDL_Renderer *r = SDL_CreateRenderer(win, tries[i]);
+        SDL_Renderer *r = SDL_CreateRenderer(janela, tentativas[i]);
         if (r) {
             SDL_Log("render em uso : %s", SDL_GetRendererName(r));
             return r;
         }
-        SDL_Log("renderer '%s' falhou: %s",
-                tries[i] ? tries[i] : "(automatico)", SDL_GetError());
+        SDL_Log("[video] renderer '%s' falhou: %s",
+                tentativas[i] ? tentativas[i] : "(automatico)", SDL_GetError());
     }
     return NULL;
 }
 
+bool Video_init(Video *vid)
+{
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+        SDL_Log("[video] SDL_InitSubSystem(VIDEO) falhou: %s", SDL_GetError());
+        return false;
+    }
+    log_drivers();
 
+    /* Em KMS/DRM a SDL cria a superfície EGL junto com a janela. Sem pedir
+       GLES aqui, ela pede OpenGL desktop, que o Mali do R36S não tem: a janela
+       não nasce (BUILD.md, "Could not create EGL window surface"). */
+    if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES) ||
+        !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2) ||
+        !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0)) {
+        SDL_Log("[video] nao consegui pedir o perfil GLES: %s", SDL_GetError());
+    }
 
-void Video_RenderAll(Video *vid){
-    SDL_RenderPresent(vid->ds_render.render); // coloca tudo na tela
+    /* No console o script de launch exporta ARKHERO_FULLSCREEN=1.
+       No PC a janela pode ser redimensionada: a resolução lógica cuida da escala. */
+    SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+    const char *fs = SDL_getenv("ARKHERO_FULLSCREEN");
+    if (fs && SDL_strcmp(fs, "1") == 0) flags |= SDL_WINDOW_FULLSCREEN;
+
+    vid->janela = SDL_CreateWindow("Ark Hero", VIDEO_LARGURA, VIDEO_ALTURA, flags);
+    if (!vid->janela) {
+        SDL_Log("[video] SDL_CreateWindow falhou: %s", SDL_GetError());
+        return false;
+    }
+
+    vid->ren = cria_renderer(vid->janela);
+    if (!vid->ren) return false;
+
+    if (!SDL_SetRenderVSync(vid->ren, 1) &&
+        !SDL_SetRenderVSync(vid->ren, SDL_RENDERER_VSYNC_ADAPTIVE)) {
+        SDL_Log("[video] sem vsync: %s", SDL_GetError());
+    }
+
+    /* Daqui pra frente tudo é desenhado em 640x480, qualquer que seja a tela.
+       No R36S a escala é 1:1; num monitor maior aparecem faixas pretas. */
+    SDL_SetRenderLogicalPresentation(vid->ren, VIDEO_LARGURA, VIDEO_ALTURA,
+                                     SDL_LOGICAL_PRESENTATION_LETTERBOX);
+
+    vid->fps_inicio = vid->frame_anterior = SDL_GetTicks();
+    return true;
+}
+
+void Video_quit(Video *vid)
+{
+    if (vid->ren)    SDL_DestroyRenderer(vid->ren);
+    if (vid->janela) SDL_DestroyWindow(vid->janela);
+    vid->ren    = NULL;
+    vid->janela = NULL;
+}
+
+void Video_begin_frame(Video *vid)
+{
+    SDL_SetRenderDrawColor(vid->ren, 0, 0, 0, SDL_ALPHA_OPAQUE);
+    SDL_RenderClear(vid->ren);
+}
+
+void Video_end_frame(Video *vid)
+{
+    SDL_RenderPresent(vid->ren);   /* com vsync, espera a tela aqui */
+
+    const Uint64 agora     = SDL_GetTicks();
+    const Uint64 intervalo = agora - vid->frame_anterior;
+    vid->frame_anterior = agora;
+    if (intervalo > vid->pior_frame_ms) vid->pior_frame_ms = intervalo;
+
+    vid->fps_frames++;
+    const Uint64 passou = agora - vid->fps_inicio;
+    if (passou >= FPS_LOG_MS) {
+        vid->fps = (float)vid->fps_frames * 1000.0f / (float)passou;
+        SDL_Log("[video] fps %.1f  pior frame %llu ms", vid->fps, (unsigned long long)vid->pior_frame_ms);
+        vid->fps_inicio    = agora;
+        vid->fps_frames    = 0;
+        vid->pior_frame_ms = 0;
+    }
 }

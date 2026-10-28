@@ -6,6 +6,10 @@
 /third_party/src/SDL3-3.4.16/
 #/third_party/src/*/
 
+# musicas de teste: tem direitos autorais, ficam so na maquina local
+# (o jogo e distribuido sem musicas; quem joga traz a propria biblioteca)
+/assets/musics/
+
 # material de referencia pesado (nao versionar)
 /2048plus.zip
 /portmaster_exemplo_jogo/

@@ -35,14 +35,24 @@ message(STATUS "Ark Hero: arquitetura alvo = ${ARKHERO_ARCH}")
 
 find_package(SDL3 CONFIG REQUIRED)
 
+# o clangd do editor le as flags daqui (ver .clangd)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# game/ nao usa a SDL: entra no jogo e tambem no teste, que compila sem ela
+set(ARKHERO_GAME_SRC
+    src/game/acao.c
+    src/game/game.c
+    src/game/menu.c
+)
+
 add_executable(arkhero
     src/main.c
     src/platform/video.c
     src/platform/input.c
-    src/platform/input.c
-    src/draw/desenhos.c
-    src/game/game_state.c
-    
+    src/draw/draw.c
+    src/draw/formas.c
+    src/draw/pista.c
+    ${ARKHERO_GAME_SRC}
 )
 
 target_include_directories(arkhero PRIVATE src)
@@ -75,3 +85,17 @@ add_custom_command(TARGET arkhero POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:arkhero>/assets
 )
+
+# ---------------------------------------------------------------------------
+# Testes da logica do jogo, sem janela e SEM a SDL (ARQUITETURA 6.9).
+# O alvo nao linka a SDL: se alguem usar uma funcao da SDL em game/, ele para
+# de compilar. E a prova de que a regra esta sendo cumprida.
+# Rodar: ctest --test-dir build/local   (ou ./build/local/test_game)
+# ---------------------------------------------------------------------------
+enable_testing()
+add_executable(test_game tests/test_game.c ${ARKHERO_GAME_SRC})
+target_include_directories(test_game PRIVATE src)
+target_compile_options(test_game PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wshadow>
+)
+add_test(NAME test_game COMMAND test_game)

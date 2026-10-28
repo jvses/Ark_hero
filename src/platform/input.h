@@ -1,32 +1,56 @@
-#ifndef INPUT_LIB
-#define INPUT_LIB
+#ifndef ARK_INPUT_H
+#define ARK_INPUT_H
 
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_gamepad.h>
-#include <SDL3/SDL_joystick.h>
-#include <SDL3/SDL_stdinc.h>
-#include "../game/game_state.h"
+/* Teclado + gamepad -> ações do jogo (game/acao.h).
+ *
+ * Cada ação tem um botão de controle e uma tecla. O mapeamento pode ser
+ * trocado em tempo de execução (Input_capture_start) e fica salvo em
+ * <PrefPath>/controles.cfg; no console, <pasta do jogo>/conf/arkhero/. */
 
+#include <SDL3/SDL.h>
 
-typedef struct{
-    bool atual,anterior;
-} BTN_menu_states;
+#include "game/acao.h"
 
-typedef struct{
+/* "Botões físicos" do controle: os SDL_GamepadButton (0..COUNT-1) e mais dois
+ * para os gatilhos, que a SDL entrega como eixo e não como botão. */
+#define INPUT_FISICO_NENHUM (-1)
+#define INPUT_FISICO_L2     ((int)SDL_GAMEPAD_BUTTON_COUNT)
+#define INPUT_FISICO_R2     ((int)SDL_GAMEPAD_BUTTON_COUNT + 1)
+
+#define INPUT_CAPTURA_SEGUNDOS 5   /* tempo para apertar o botão novo */
+
+typedef struct {
+    int          pad;     /* botão físico do controle, ou INPUT_FISICO_NENHUM */
+    SDL_Scancode tecla;   /* SDL_SCANCODE_UNKNOWN = nenhuma */
+} Mapeamento;
+
+typedef struct {
+    SDL_Gamepad   *gamepad;
     SDL_JoystickID which;
-    SDL_Gamepad *gamepad;
-    Arrows setas; //melhor implementar a lógica de estado das setas em bool mesmo. Assim controlo também estados com várias pressionadas ao mesmo tempo
-    // Uint8 setas;
-    BTN_menu_states menu_btn;
-    bool sair;
+    bool           sair;              /* Select + Start */
+
+    Mapeamento     mapa[ACAO_N];
+    uint32_t       bordas;            /* ações apertadas desde o último Input_frame */
+    bool           gatilho[2];        /* L2/R2 apertados? (para achar a borda do eixo) */
+
+    int            capturando;        /* ação esperando um botão novo, ou -1 */
+    Uint64         captura_inicio_ms;
+
+    char           ultimo[48];        /* último botão apertado, para conferir na tela */
+    char           arquivo[512];      /* caminho do controles.cfg ("" = não salva) */
 } Input;
 
+bool   Input_init(Input *inp);
+void   Input_quit(Input *inp);
+void   Input_event(Input *inp, const SDL_Event *ev);   /* no SDL_AppEvent: só anota */
+Botoes Input_frame(Input *inp);                        /* no SDL_AppIterate: uma vez por frame */
 
+void   Input_capture_start(Input *inp, Acao a);   /* o próximo botão/tecla vira o de "a" */
+double Input_capture_left(const Input *inp);      /* segundos restantes, 0 se não está capturando */
+void   Input_reset_defaults(Input *inp);          /* volta ao padrão e salva */
 
-bool Input_init(Input *inp);
-void Input_quit(Input *inp);
-void Input_Event_Handler(Input *inp,const SDL_Event *ev);
-void Input_update_gl_arrows(Input *inp,Game_logic_State *gl);
-bool Input_update_gl_menu(Input *inp);
+/* Nomes para mostrar na tela: "L1", "R2", "B"... e "A", "Return"... */
+const char *Input_pad_label(const Input *inp, Acao a);
+const char *Input_key_label(const Input *inp, Acao a);
 
 #endif
