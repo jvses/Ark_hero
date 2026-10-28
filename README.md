@@ -43,6 +43,14 @@ third_party/    código-fonte das dependências (SDL3, Lua)
 
 ## Sobre o uso de IA
 
-Este é um projeto de aprendizado de C, SDL3 e Lua. O código do jogo é escrito
-por mim; uso IA como orientadora, para tirar dúvidas, discutir abordagens e
-entender melhor a biblioteca e o código. Os scripts de compilação, docker e empacotamento foram feitos quase inteiramente com IA, mas o código do jogo é escrito por mim.
+Este é um projeto de aprendizado de C, SDL3 e Lua, e o uso de IA muda
+conforme a branch:
+
+- **`main`**: o código do jogo é escrito por mim. Uso IA como orientadora,
+  para tirar dúvidas, discutir abordagens e entender melhor a biblioteca e o
+  código. Os scripts de compilação, docker e empacotamento foram feitos quase
+  inteiramente com IA.
+- **`claudio`**: o jogo é desenvolvido com IA (Claude), sob a minha direção.
+  Eu defino o que entra em cada etapa, testo no PC e no R36S e faço os
+  commits; o código é escrito pela IA. O registro de cada etapa (o que pedi e
+  o que foi feito) está em [PROGRESSO.md](PROGRESSO.md).

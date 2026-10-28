@@ -3,6 +3,7 @@
 /dist/
 /prebuilt/
 /third_party/sdl3-*/
+/third_party/xiph-*/
 /third_party/src/SDL3-3.4.16/
 #/third_party/src/*/
 

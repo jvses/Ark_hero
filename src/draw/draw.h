@@ -14,6 +14,23 @@ typedef struct {
     SDL_Texture *imagem[IMAGEM_N];   /* fundos, carregados uma vez no Draw_init */
 } Draw;
 
+/* Estado do áudio, para a tela de teste de áudio (vem da plataforma). */
+typedef struct {
+    bool        ok;              /* existe dispositivo de áudio */
+    const char *driver;
+    int         buffer_frames;
+    const char *musica;          /* "Titulo - Artista", ou NULL se não achou nenhuma */
+    const char *pasta;           /* onde a música de teste foi procurada */
+    const char *faixas;          /* "guitar.opus  bass.opus ..." */
+    int         ignoradas;       /* faixas em formato ainda não suportado (mp3) */
+    int         carga;           /* 0 parado, 1 carregando, 2 pronta, 3 erro */
+    float       progresso;       /* 0..1 */
+    const char *carga_info;      /* resumo da carga, ou o erro */
+    bool        tocando, pausado;
+    double      t_cru, t_suave;  /* os dois relógios, para comparar */
+    double      duracao;         /* segundos */
+} HudAudio;
+
 /* O que aparece na tela mas não é estado do jogo: vem da plataforma.
  * O main.c preenche a cada frame (o draw não conhece o input nem o video). */
 typedef struct {
@@ -23,6 +40,8 @@ typedef struct {
     const char *pad[ACAO_N];            /* rótulo do botão de cada ação: "L1" */
     const char *tecla[ACAO_N];          /* rótulo da tecla de cada ação: "A" */
     const char *ultimo;                 /* último botão apertado (diagnóstico) */
+    const char *analogico;              /* analógico do whammy: "Esquerdo" / "Direito" */
+    HudAudio    audio;
 } Hud;
 
 bool Draw_init(Draw *d, SDL_Renderer *ren, const char *pasta_imagens);

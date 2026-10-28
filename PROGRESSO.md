@@ -8,15 +8,15 @@ a direção do João. Cada etapa é testada no R36S antes do commit.
 
 | # | Etapa | Estado |
 |---|---|---|
-| 0 | Arrumar a casa: módulos, input com remapeamento, menus, pista | **feita, aguardando teste no R36S** |
-| 1 | Visualizador de trastes (cada botão acende a faixa) | adiantada na etapa 0 (pista de teste) |
-| 2 | Áudio + relógio mestre (metrônomo gerado por código) | |
-| 3 | Parser de `.chart` + mapa de tempo + testes | |
+| 0 | Arrumar a casa: módulos, input com remapeamento, menus, pista | feita e testada no R36S (commit `f0f7eb9`) |
+| 1 | Jogabilidade com notas de demonstração: juiz (modo controle), sustains, whammy, star power, placar | feita, testada no PC; falta o R36S |
+| 2 | Áudio: Opus, Vorbis e WAV, mistura das faixas, relógio mestre | **feita, testada no PC; falta o R36S** |
+| 3 | Parser de `.chart` + mapa de tempo + testes | próxima |
 | 4 | Pista com as notas de uma música de verdade | |
-| 5 | Juiz + pontuação | |
-| 6 | Lua: `config.lua` e `regras.lua`, com recarga a quente | |
-| 7 | Calibração de áudio e vídeo | |
-| 8 | Biblioteca de músicas + cache | |
+| 5 | Lua: `config.lua` e `regras.lua`, com recarga a quente | |
+| 6 | Calibração de áudio e vídeo | |
+| 7 | Biblioteca de músicas + cache | |
+| 8 | Modo guitarra (com palhetada e HOPO) | |
 
 ---
 
@@ -102,9 +102,8 @@ agora generalizada para qualquer forma convexa.
 
 ### Decisões e suposições: conferir
 
-1. **Azul = R1.** O pedido tinha L1 duas vezes (Verde e Azul) e nenhum R1.
-   Se a intenção era outra, troque na tela de Controles ou na tabela
-   `PADRAO` de `src/platform/input.c`.
+1. ~~Azul = R1.~~ Esclarecido depois do teste: a ordem certa é
+   **R1, R2, L2, L1 e o botão de baixo**. Corrigido na etapa 1.
 2. **Letras do R36S.** A SDL nomeia os botões pela posição (padrão Xbox). O
    jogo mostra as letras do R36S: baixo = B, direita = A, esquerda = Y,
    cima = X. Laranja = B (baixo, o X do PlayStation); Confirmar = A;
@@ -139,3 +138,203 @@ Copiar `dist/Ark Hero.sh` e `dist/arkhero/` para `ports/` e conferir:
 - `src/images/` (originais em JPG, inclusive os 4k) ainda está no git.
 - O README diz que o código do jogo é escrito só pelo João; nesta branch
   isso mudou.
+
+---
+
+## Etapa 1: jogabilidade com notas de demonstração (2026-10-28)
+
+### Pedido
+
+Depois do teste da etapa 0 no R36S (tudo funcionando):
+
+1. O padrão é o **modo controle** do Clone Hero: sem palhetada, só o botão.
+2. Detectar acerto e erro, com marcação e animação de acerto; trocar o
+   brilho da faixa inteira (traste segurado) por uma mudança só no alvo,
+   na base da pista.
+3. Explicar como o mapeamento continua salvo depois de fechar o jogo.
+4. Há uma música de teste em `assets/musics/`.
+5. Começar as notas longas (sustain). Whammy no analógico (esquerdo por
+   padrão, com opção do direito), virando para os lados; star power no
+   mesmo analógico, com um empurrão forte para cima.
+6. Trastes no R36S: R1, R2, L2, L1 e o botão de baixo.
+
+### O que foi feito
+
+**As notas viraram dados do jogo** (`game/chart.*`): a pista lê `g->chart`,
+o mesmo formato que o parser de `.chart` vai preencher. A música de
+demonstração (`Chart_demo`, 120 BPM, ~25 s) tem notas simples, sustains,
+acordes, colcheias e duas frases de star power.
+
+**Juiz do modo controle** (`game/judge.c`):
+- apertar o botão no tempo da nota é tocar a nota (janela de ±70 ms);
+- acorde: acerta quando todos os botões estão apertados, sendo o último
+  dentro da janela;
+- botão sem nota não é punido; deixar a nota passar é erro (quebra o combo);
+- sustain: depois da cabeça, segurar até o fim. Soltar antes não quebra o
+  combo, só para de somar (folga de 100 ms no fim).
+
+**Placar** (`game/score.c`, a partir dos eventos do frame):
+50 pontos por botão da nota, 50 por segundo de sustain, multiplicador
+x1 a x4 (a cada 10 de combo) e x2 com o star power ativo. Os eventos
+(`EV_ACERTO`, `EV_ERRO`, `EV_SUSTAIN`...) são o ponto onde a Lua vai entrar.
+
+**Star power:** notas de frase em branco com anel ciano; frase inteira
+acertada = +25% no medidor; com 50% ou mais, ativa (Select, Espaço ou o
+analógico para cima); dura até 16 s com o medidor cheio. Whammy num sustain
+de frase também enche o medidor.
+
+**Analógico** (`platform/input.c`): para os lados = whammy (0 a 100%, com
+zona morta no centro); empurrão forte para cima = star power. Esquerdo por
+padrão; em Configurações > Controles > Analógico troca para o direito.
+A escolha fica no `controles.cfg`. No PC, o whammy é a tecla W.
+
+**Visual:**
+- o alvo afunda e acende quando o botão está apertado; a faixa não brilha
+  mais;
+- acerto: anel que se abre e chama que sobe no alvo; nota acertada some;
+- sustain: cauda na faixa, que ondula com o whammy e "queima" no alvo
+  enquanto é segurada; solta cedo, o resto passa apagado;
+- nota perdida passa cinza; "PERFEITO" (até 30 ms), "BOM" ou "ERROU" sobre
+  a linha de acerto, com o erro em ms (negativo = adiantado);
+- HUD: pontos, multiplicador (a cor muda com o valor), combo, medidor de
+  star power com a marca de 50%, barra do whammy;
+- pista azulada e bordas ciano com o star power ativo;
+- tela de fim: pontos, notas acertadas (%), maior combo, "Jogar de novo".
+
+**Menus:** Configurações ganhou "Modo de jogo: Controle" (o modo guitarra
+avisa "em breve"); Controles ganhou Whammy e Analógico. As linhas de
+palhetada saíram da tela até o modo guitarra existir (as ações continuam).
+
+**Testes:** 16 testes no `test_game`. Os novos cobrem: acerto sem
+palhetada, fora da janela, botão errado, acorde, sustain completo e solto
+cedo, multiplicador, star power, frase com erro e fim da música. Passam no
+PC e no binário ARM.
+
+**Músicas de teste fora do git e do pacote:** `assets/musics/` foi para o
+`.gitignore` e saiu do índice do git (`git rm --cached`: os arquivos
+continuam no disco); o `package_port.sh` não as copia.
+
+### Decisões: conferir
+
+1. **Botão de baixo.** O padrão do laranja é o botão de baixo pela posição
+   (o `a` / SOUTH da SDL). No R36S a tela mostrou "A" para ele, o que
+   sugere que o PortMaster entrega esse botão como `b`. A linha `laranja|...`
+   do `conf/arkhero/controles.cfg` do aparelho tira a dúvida.
+2. O tempo de cada aperto ainda é o do frame (~16 ms de resolução); os
+   timestamps dos eventos entram com o relógio do áudio.
+3. Regras (janela, pontos, duração do star power) são constantes em C;
+   vão para a Lua na etapa 5.
+
+### Como testar no R36S
+
+- [ ] Configurações > Controles > Restaurar padrão: R1, R2, L2, L1, baixo
+- [ ] Jogar: as notas são acertadas só com o botão, sem palhetada
+- [ ] acordes precisam de todos os botões
+- [ ] explosão no alvo ao acertar; "ERROU" e combo zerado ao deixar passar
+- [ ] sustains: segurar soma pontos e a cauda "queima"; o whammy ondula a cauda
+- [ ] depois da segunda frase ciano, "PRONTO!": analógico para cima ativa
+- [ ] Analógico: trocar para o direito e conferir que o whammy muda de lado
+- [ ] tela de fim com o resumo; "Jogar de novo"
+- [ ] FPS continua ~60 com tudo na tela (`log.txt`)
+
+### Para a próxima etapa (áudio)
+
+A música de teste tem o áudio em **Opus** (`guitar.opus`, `bass.opus`,
+`drums.opus`), sem uma faixa `song`. Opus precisa da libopus (+ opusfile),
+que teria de ser compilada no container e ir no pacote, como a SDL. Muitas
+músicas da comunidade usam `.ogg` (Vorbis), que o `stb_vorbis` resolve sem
+dependência. Decidir antes de começar.
+
+---
+
+## Etapa 2: áudio e relógio mestre (2026-10-28)
+
+### Pedido
+
+- Tirar do GitHub a música de teste, que foi enviada por engano, e
+  continuar o versionamento.
+- Implementar logo as bibliotecas para suportar Opus, de um jeito que já
+  seja compatível com o que existe nas músicas da comunidade.
+- Por enquanto, só dá para testar no PC.
+
+### Git: a música saiu do histórico
+
+A música só existia no commit da etapa 0 (`f0f7eb9`). Ele foi refeito
+sem `assets/musics/`, com a mesma mensagem e as mesmas datas, e com a
+linha nova do `.gitignore` (novo commit: `ba1dacd`). Os arquivos continuam
+no disco, ignorados pelo git. O commit antigo ficou guardado localmente em
+`refs/backup/claudio-antes-da-limpeza`.
+
+Falta o João enviar com force push (o modo automático do Claude não deixa
+fazer isso sozinho, por ser destrutivo):
+
+    git push --force-with-lease=claudio:f0f7eb9 origin claudio
+
+### O que foi feito
+
+**Bibliotecas** (Xiph, as de referência desses formatos): libogg 1.3.6,
+libvorbis 1.3.7, opus 1.6.1 e opusfile 0.12. Os tarballs estão em
+`third_party/src/`, conferidos com o SHA256 publicado pela Xiph.
+- PC: as do sistema (o Arch já tem as quatro), achadas pelo pkg-config.
+- Console: o `container_build.sh` compila as quatro **estáticas** em
+  `third_party/xiph-<arch>/` (uma vez; depois fica em cache). Elas vão
+  dentro do binário: o pacote não ganha nenhum `.so` novo. O binário do
+  R36S depende só de libSDL3, libm e libc, e exige no mínimo a glibc 2.34.
+
+**Formatos** (`platform/carregador.c`): Opus (`.opus`, e `.ogg` que na
+verdade é Opus, detectado sozinho), Ogg Vorbis (`.ogg`, qualquer taxa) e
+WAV. MP3 é reconhecido e ignorado por enquanto (aparece na tela).
+
+**Faixas** (`platform/musica.c`): numa pasta do Clone Hero, acha `song`,
+`guitar`, `bass`, `rhythm`, `keys`, `vocals*`, `drums*` e `crowd`, sem
+diferenciar maiúsculas; `preview.*` fica de fora. Desce até 3 níveis de
+subpastas. As músicas de teste ficam em `songs/` (no console, dentro da
+pasta do jogo) ou `assets/musics/` (no PC).
+
+**Carga:** numa thread, decodifica cada faixa, converte para 48 kHz s16
+estéreo e soma tudo num buffer só (estratégia "pré-mixar" da conversa
+inicial: zero decodificação durante a partida). A tela mostra o progresso.
+
+**Relógio mestre** (`platform/audio.c`): a posição vem dos frames que o
+dispositivo já consumiu (enviados - na fila - buffer do dispositivo),
+suavizada com o relógio do sistema entre os degraus. Na partida, o tempo
+do jogo passa a ser o do áudio (`g->relogio_audio`), e nunca volta para
+trás. Sem dispositivo de áudio, o jogo roda como antes, pelo `dt`.
+
+**Na partida:** a música de demonstração toca um metrônomo gerado por
+código nas linhas de batida (acento no primeiro tempo), então dá para
+ouvir se a pista está no tempo do som. Pausa pausa o som; Reiniciar
+recomeça.
+
+**Menus:** Volume passou a funcionar. Em Configurações entrou
+**Teste de audio**: carrega a música de teste (com barra de progresso e o
+tempo de carga), toca e pausa, e mostra os dois relógios lado a lado.
+
+**Testes:** 18 no `test_game` (novos: `song.ini` e o relógio externo).
+
+### Medições no PC
+
+- Carga da música de teste (255 s, 3 faixas Opus): **3,5 s** (221x o tempo real).
+- Relógio: degraus de 21,3 ms (o buffer de 1024 frames); o suave fica a no
+  máximo 11 ms do cru e nunca volta. A diferença para o relógio do sistema
+  ficou **constante em ~74 ms** do 1º ao 20º segundo (o atraso de partida do
+  PipeWire): não há deriva.
+- Decodificação conferida também no binário ARM (emulado): resultado
+  idêntico ao do PC.
+
+### Como testar
+
+No PC: Configurações > Teste de audio > Carregar > Tocar; e Jogar, para
+ouvir o metrônomo junto com as linhas de batida.
+
+No R36S: copiar uma pasta de música para `ports/arkhero/songs/` e usar o
+Teste de audio. **Anotar o tempo de carga que aparece na tela.** No R36S
+ele deve ser bem maior que no PC; se passar de uns 15 s, a próxima melhoria
+é decodificar em paralelo (o RK3326 tem 4 núcleos).
+
+### Pendências
+
+- MP3 (dr_mp3, um arquivo só, se aparecer nas músicas que você usa).
+- Volume por faixa e silenciar a guitarra quando erra (estratégia "dois
+  streams" da conversa inicial).
+- O `delay` do `song.ini` e o `Offset` do `.chart` entram com o parser.

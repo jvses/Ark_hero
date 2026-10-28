@@ -35,20 +35,38 @@ message(STATUS "Ark Hero: arquitetura alvo = ${ARKHERO_ARCH}")
 
 find_package(SDL3 CONFIG REQUIRED)
 
+# ---------------------------------------------------------------------------
+# Audio: Opus (opusfile) e Ogg Vorbis (vorbisfile), achados pelo pkg-config.
+#   PC:        as do sistema (pacman -S opusfile libvorbis), dinamicas.
+#   container: as de third_party/xiph-<arch>/, estaticas (ARKHERO_AUDIO_STATIC),
+#              compiladas pelo tools/container_build.sh. Vao para dentro do
+#              binario: o pacote nao ganha .so novo.
+# ---------------------------------------------------------------------------
+option(ARKHERO_AUDIO_STATIC "linkar opus/vorbis estaticos (build do console)" OFF)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(AUDIO REQUIRED IMPORTED_TARGET opusfile vorbisfile)
+
 # o clangd do editor le as flags daqui (ver .clangd)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # game/ nao usa a SDL: entra no jogo e tambem no teste, que compila sem ela
 set(ARKHERO_GAME_SRC
     src/game/acao.c
+    src/game/chart.c
     src/game/game.c
+    src/game/judge.c
     src/game/menu.c
+    src/game/score.c
+    src/game/songini.c
 )
 
 add_executable(arkhero
     src/main.c
     src/platform/video.c
     src/platform/input.c
+    src/platform/audio.c
+    src/platform/carregador.c
+    src/platform/musica.c
     src/draw/draw.c
     src/draw/formas.c
     src/draw/pista.c
@@ -58,6 +76,13 @@ add_executable(arkhero
 target_include_directories(arkhero PRIVATE src)
 
 target_link_libraries(arkhero PRIVATE SDL3::SDL3)
+if(ARKHERO_AUDIO_STATIC)
+    # --static: o pkg-config lista tambem as dependencias (ogg, opus, libm)
+    target_include_directories(arkhero PRIVATE ${AUDIO_STATIC_INCLUDE_DIRS})
+    target_link_libraries(arkhero PRIVATE ${AUDIO_STATIC_LDFLAGS})
+else()
+    target_link_libraries(arkhero PRIVATE PkgConfig::AUDIO)
+endif()
 
 target_compile_options(arkhero PRIVATE
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wshadow>
@@ -95,6 +120,7 @@ add_custom_command(TARGET arkhero POST_BUILD
 enable_testing()
 add_executable(test_game tests/test_game.c ${ARKHERO_GAME_SRC})
 target_include_directories(test_game PRIVATE src)
+target_link_libraries(test_game PRIVATE m)   # fabs nos testes
 target_compile_options(test_game PRIVATE
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wshadow>
 )

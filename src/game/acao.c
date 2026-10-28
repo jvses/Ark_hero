@@ -16,6 +16,7 @@ static const NomeAcao NOMES[ACAO_N] = {
     [ACAO_PALHETA_CIMA]  = { "palheta_cima",  "Palheta cima" },
     [ACAO_PALHETA_BAIXO] = { "palheta_baixo", "Palheta baixo" },
     [ACAO_STAR_POWER]    = { "star_power",    "Star power" },
+    [ACAO_WHAMMY]        = { "whammy",        "Whammy" },
     [ACAO_PAUSA]         = { "pausa",         "Pausa" },
     [ACAO_CIMA]          = { "cima",          "Cima" },
     [ACAO_BAIXO]         = { "baixo",         "Baixo" },

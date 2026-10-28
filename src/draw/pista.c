@@ -11,8 +11,8 @@
  * Uma nota que anda com velocidade constante em z (o tempo) parece acelerar
  * quando chega perto, como numa estrada de verdade.
  *
- * Por enquanto as notas são de demonstração (um padrão fixo a 120 BPM);
- * na etapa do chart elas passam a vir do Game. */
+ * Tudo aqui é função do estado do jogo (g->t, notas, último acerto...):
+ * nenhuma animação guarda estado próprio (ARQUITETURA 7.5 e 7.6). */
 
 #include "draw/draw_internal.h"
 
@@ -21,9 +21,11 @@
 #define PISTA_LARG_BASE  470.0f
 #define PISTA_LARG_TOPO  150.0f
 #define PISTA_TIRAS       16      /* subdivisões ao longo de z (ARQUITETURA 7.2) */
+#define CAUDA_TIRAS       24      /* subdivisões de um sustain (para ondular) */
 
-#define DEMO_BPM        120.0
-#define DEMO_INICIO       2.0     /* segundos até a primeira nota de demonstração */
+#define EXPLOSAO_DURACAO  0.30    /* segundos da animação de acerto */
+
+static const SDL_Color COR_APAGADA = { 110, 110, 120, 255 };   /* nota perdida */
 
 typedef struct {
     float cx, y_base, larg_base;
@@ -56,11 +58,23 @@ static SDL_FPoint ponto(const Pista *p, float u, float z)
                          p->y_hor + (p->y_base - p->y_hor) * f };
 }
 
+/* largura de uma faixa (1/5 da pista) na linha de acerto */
+static float largura_faixa(const Pista *p)
+{
+    return p->larg_base / 5.0f;
+}
+
 /* centro da faixa de um traste (0 = verde); no modo canhoto a ordem inverte */
 static float u_da_faixa(const Game *g, int traste)
 {
     const int coluna = g->opcoes.canhoto ? 4 - traste : traste;
     return (coluna + 0.5f) / 5.0f;
+}
+
+/* tempo da música -> profundidade na pista */
+static float z_do_tempo(const Game *g, double t)
+{
+    return (float)((t - g->t) / Game_janela_visivel(g));
 }
 
 /* some suavemente nos últimos 30% da pista */
@@ -71,20 +85,20 @@ static float some_no_topo(float z)
 }
 
 /* ---------------------------------------------------------------------------
- * Faixa entre u0 e u1, da base ao topo, em tiras (para o degradê seguir a
- * perspectiva). brilho = true: forte embaixo e some rápido (traste segurado).
+ * Corpo, linhas
  * ------------------------------------------------------------------------- */
-static void faixa(SDL_Renderer *ren, const Pista *p, float u0, float u1, SDL_Color cor, bool brilho)
+
+/* o corpo da pista, em tiras (para o degradê do topo seguir a perspectiva) */
+static void corpo(SDL_Renderer *ren, const Pista *p, SDL_Color cor)
 {
     SDL_Vertex v[2 * (PISTA_TIRAS + 1)];
     int idx[6 * PISTA_TIRAS];
 
     for (int i = 0; i <= PISTA_TIRAS; i++) {
         const float z = (float)i / PISTA_TIRAS;
-        const float a = brilho ? (1.0f - z) * (1.0f - z) : some_no_topo(z);
-        const SDL_FColor c = cor_f(cor_alfa(cor, a));
-        v[2 * i]     = (SDL_Vertex){ ponto(p, u0, z), c, { 0, 0 } };
-        v[2 * i + 1] = (SDL_Vertex){ ponto(p, u1, z), c, { 0, 0 } };
+        const SDL_FColor c = cor_f(cor_alfa(cor, some_no_topo(z)));
+        v[2 * i]     = (SDL_Vertex){ ponto(p, 0.0f, z), c, { 0, 0 } };
+        v[2 * i + 1] = (SDL_Vertex){ ponto(p, 1.0f, z), c, { 0, 0 } };
     }
     for (int i = 0; i < PISTA_TIRAS; i++) {
         const int e0 = 2 * i, d0 = e0 + 1, e1 = e0 + 2, d1 = e0 + 3;
@@ -117,63 +131,172 @@ static void travessa(SDL_Renderer *ren, const Pista *p, float z, float altura, f
     ret(ren, (SDL_FRect){ e.x, e.y - h, d.x - e.x, 2.0f * h }, cor);
 }
 
+static void batidas(SDL_Renderer *ren, const Pista *p, const Game *g)
+{
+    for (int k = 0; k < g->chart.n_batidas; k++) {
+        const float z = z_do_tempo(g, g->chart.batidas[k].t);
+        if (z < 0.0f) continue;
+        if (z > 1.0f) break;
+        const bool forte = g->chart.batidas[k].forte;
+        travessa(ren, p, z, forte ? 4.0f : 2.0f, 0.0f,
+                 cor_alfa((SDL_Color){ 255, 255, 255, forte ? 120 : 55 }, some_no_topo(z)));
+    }
+}
+
 /* ---------------------------------------------------------------------------
- * Notas e alvos
+ * Sustain: uma tira que segue a faixa de t0 a t1. Enquanto está sendo
+ * segurado, ondula com o whammy.
+ * ------------------------------------------------------------------------- */
+static void cauda(SDL_Renderer *ren, const Pista *p, const Game *g, float u, double t0, double t1,
+                  SDL_Color cor, bool viva)
+{
+    float z0 = z_do_tempo(g, t0), z1 = z_do_tempo(g, t1);
+    if (z0 < 0.0f && viva) z0 = 0.0f;      /* segurando: a cauda sai da linha de acerto */
+    if (z0 < -0.05f) z0 = -0.05f;
+    if (z1 > 1.0f) z1 = 1.0f;
+    if (z1 <= z0) return;
+
+    SDL_Vertex v[2 * (CAUDA_TIRAS + 1)];
+    int idx[6 * CAUDA_TIRAS];
+    const float meia = 0.035f;   /* meia largura da cauda, em u (fração da pista) */
+    const float onda = viva ? 0.025f * g->whammy : 0.0f;
+
+    for (int i = 0; i <= CAUDA_TIRAS; i++) {
+        const float z  = z0 + (z1 - z0) * (float)i / CAUDA_TIRAS;
+        const float du = onda * SDL_sinf(z * 40.0f - (float)g->t * 25.0f);
+        const SDL_FColor c = cor_f(cor_alfa(cor, some_no_topo(z)));
+        v[2 * i]     = (SDL_Vertex){ ponto(p, u - meia + du, z), c, { 0, 0 } };
+        v[2 * i + 1] = (SDL_Vertex){ ponto(p, u + meia + du, z), c, { 0, 0 } };
+    }
+    for (int i = 0; i < CAUDA_TIRAS; i++) {
+        const int e0 = 2 * i, d0 = e0 + 1, e1 = e0 + 2, d1 = e0 + 3;
+        idx[6 * i + 0] = e0; idx[6 * i + 1] = d0; idx[6 * i + 2] = e1;
+        idx[6 * i + 3] = e1; idx[6 * i + 4] = d0; idx[6 * i + 5] = d1;
+    }
+    SDL_RenderGeometry(ren, NULL, v, 2 * (CAUDA_TIRAS + 1), idx, 6 * CAUDA_TIRAS);
+}
+
+static void caudas(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
+{
+    for (int i = g->primeira_visivel; i <= ultima; i++) {
+        const Nota *n = &g->chart.notas[i];
+        if (n->duracao <= 0.0) continue;
+        const double fim = n->t + n->duracao;
+
+        for (int f = 0; f < ACAO_N_TRASTES; f++) {
+            if (!(n->mascara & (1u << f))) continue;
+            const float u = u_da_faixa(g, f);
+            const SDL_Color c = (n->flags & NOTA_STAR) ? COR_CIANO : COR_TRASTE[f];
+
+            if (n->estado == NOTA_PENDENTE) {
+                cauda(ren, p, g, u, n->t, fim, cor_alfa(c, 0.75f), false);
+            } else if (n->estado == NOTA_PERDIDA) {
+                cauda(ren, p, g, u, n->t, fim, cor_alfa(COR_APAGADA, 0.5f), false);
+            } else if (n->segurando) {
+                cauda(ren, p, g, u, g->t, fim, cor_mistura(c, COR_TEXTO, 0.35f), true);
+            } else if (n->solto < fim) {   /* soltou antes do fim: o resto passa apagado */
+                cauda(ren, p, g, u, n->solto, fim, cor_alfa(COR_APAGADA, 0.5f), false);
+            }
+        }
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * Notas, alvos, efeitos
  * ------------------------------------------------------------------------- */
 #define NOTA_LARG 0.72f   /* largura da nota, em fração da largura da faixa */
 
-static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color cor)
+static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color cor, bool star)
 {
     const float f = escala(p, z);
-    const float w = NOTA_LARG * (p->larg_base / 5.0f) * f;
+    const float w = NOTA_LARG * largura_faixa(p) * f;
     const float h = w * 0.42f;   /* achatada: estamos olhando a pista de cima */
     const float a = some_no_topo(z);
     const SDL_FPoint c = ponto(p, u, z);
 
     elipse(ren, c.x, c.y + h * 0.12f, w + 4.0f * f, h + 4.0f * f, cor_alfa((SDL_Color){ 0, 0, 0, 200 }, a));
+    if (star) {   /* nota de star power: anel ciano e miolo quase branco */
+        elipse(ren, c.x, c.y, w + 3.0f * f, h + 3.0f * f, cor_alfa(COR_CIANO, a));
+        cor = cor_mistura(cor, COR_TEXTO, 0.55f);
+    }
     elipse(ren, c.x, c.y, w, h, cor_alfa(cor, a));
     elipse(ren, c.x, c.y - h * 0.08f, w * 0.62f, h * 0.55f, cor_alfa(cor_mistura(cor, COR_TEXTO, 0.45f), a));
     elipse(ren, c.x, c.y - h * 0.10f, w * 0.26f, h * 0.24f, cor_alfa(COR_TEXTO, a * 0.85f));
 }
 
+static void notas(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
+{
+    /* da mais longe para a mais perto: a de perto fica por cima */
+    for (int i = ultima; i >= g->primeira_visivel; i--) {
+        const Nota *n = &g->chart.notas[i];
+        if (n->estado == NOTA_ACERTADA) continue;   /* acertada some (vira explosão) */
+        const float z = z_do_tempo(g, n->t);
+        if (z < -0.08f || z > 1.0f) continue;
+
+        const bool perdida = n->estado == NOTA_PERDIDA;
+        for (int f = 0; f < ACAO_N_TRASTES; f++) {
+            if (!(n->mascara & (1u << f))) continue;
+            nota(ren, p, u_da_faixa(g, f), z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : COR_TRASTE[f],
+                 !perdida && (n->flags & NOTA_STAR));
+        }
+    }
+}
+
+/* O alvo na linha de acerto. Segurado: "afunda" e acende. */
 static void alvo(SDL_Renderer *ren, const Pista *p, float u, SDL_Color cor, bool segurado)
 {
-    const float w = 0.80f * (p->larg_base / 5.0f) * (segurado ? 1.06f : 1.0f);
+    const float w = 0.80f * largura_faixa(p) * (segurado ? 0.94f : 1.0f);
     const float h = w * 0.42f;
     const SDL_FPoint c = ponto(p, u, 0.0f);
+    const float dy = segurado ? 2.0f : 0.0f;
 
     elipse(ren, c.x, c.y + 3.0f, w + 8.0f, h + 6.0f, (SDL_Color){ 0, 0, 0, 170 });
-    elipse(ren, c.x, c.y, w, h, segurado ? cor_mistura(cor, COR_TEXTO, 0.25f) : cor);
+    elipse(ren, c.x, c.y + dy, w, h, segurado ? cor_mistura(cor, COR_TEXTO, 0.25f) : cor);
     if (segurado) {
-        elipse(ren, c.x, c.y, w * 0.70f, h * 0.70f, cor_mistura(cor, COR_TEXTO, 0.55f));
+        elipse(ren, c.x, c.y + dy, w * 0.70f, h * 0.70f, cor_mistura(cor, COR_TEXTO, 0.60f));
     } else {
         elipse(ren, c.x, c.y, w * 0.72f, h * 0.72f, (SDL_Color){ 22, 14, 34, 255 });
         elipse(ren, c.x, c.y, w * 0.30f, h * 0.30f, cor_alfa(cor, 0.5f));
     }
 }
 
-/* Padrão de demonstração: 16 batidas, cada número é uma máscara de faixas
- * (bit 0 = verde ... bit 4 = laranja); 0 = pausa. Tem acordes (3, 24). */
-static const Uint8 DEMO[16] = { 1, 2, 4, 8, 16, 0, 3, 0, 1, 4, 16, 4, 2, 24, 0, 8 };
-
-static void notas_demo(SDL_Renderer *ren, const Pista *p, const Game *g)
+/* Acerto: um anel que se abre e uma chama que sobe, por EXPLOSAO_DURACAO. */
+static void explosao(SDL_Renderer *ren, const Pista *p, float u, SDL_Color cor, double idade)
 {
-    const double batida = 60.0 / DEMO_BPM;
-    const double janela = Game_janela_visivel(g);
+    const float k = (float)(idade / EXPLOSAO_DURACAO);   /* 0 -> 1 */
+    const float w = 0.80f * largura_faixa(p);
+    const SDL_FPoint c = ponto(p, u, 0.0f);
 
-    /* da mais longe para a mais perto: a de perto fica por cima */
-    const int primeira = (int)SDL_floor((g->t - DEMO_INICIO) / batida);
-    const int ultima   = (int)SDL_ceil((g->t + janela - DEMO_INICIO) / batida);
-    for (int k = ultima; k >= primeira; k--) {
-        if (k < 0) break;
-        const double t_nota = DEMO_INICIO + k * batida;
-        const float z = (float)((t_nota - g->t) / janela);
-        if (z < -0.06f || z > 1.0f) continue;
+    elipse(ren, c.x, c.y, w * (1.0f + 0.9f * k), w * 0.42f * (1.0f + 0.9f * k),
+           cor_alfa(cor_mistura(cor, COR_TEXTO, 0.3f), 0.55f * (1.0f - k)));
+    for (int i = 0; i < 3; i++) {
+        const float s = 1.0f - 0.25f * i;
+        elipse(ren, c.x, c.y - 10.0f - 45.0f * k * s - 8.0f * i, w * 0.55f * s * (1.0f - 0.6f * k),
+               w * 0.40f * s * (1.0f - 0.4f * k), cor_alfa(cor_mistura(cor, COR_TEXTO, 0.2f * i), 0.8f * (1.0f - k)));
+    }
+}
 
-        const Uint8 mascara = DEMO[k % 16];
-        for (int i = 0; i < ACAO_N_TRASTES; i++) {
-            if (mascara & (1u << i)) nota(ren, p, u_da_faixa(g, i), z, COR_TRASTE[i]);
-        }
+/* sustain segurado: o alvo "queima" pulsando enquanto durar */
+static void chama_sustain(SDL_Renderer *ren, const Pista *p, const Game *g, float u, SDL_Color cor)
+{
+    const float pulso = 0.5f + 0.5f * SDL_sinf((float)g->t * 30.0f);
+    const float w = 0.80f * largura_faixa(p);
+    const SDL_FPoint c = ponto(p, u, 0.0f);
+    elipse(ren, c.x, c.y - 6.0f, w * (0.9f + 0.15f * pulso), w * 0.5f, cor_alfa(cor, 0.35f + 0.25f * pulso));
+    elipse(ren, c.x, c.y - 14.0f - 6.0f * pulso, w * 0.35f, w * 0.30f, cor_alfa(COR_TEXTO, 0.5f));
+}
+
+static void efeitos(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
+{
+    uint8_t sustentando = 0;   /* faixas com sustain sendo segurado */
+    for (int i = g->primeira_visivel; i <= ultima; i++)
+        if (g->chart.notas[i].segurando) sustentando |= g->chart.notas[i].mascara;
+
+    for (int f = 0; f < ACAO_N_TRASTES; f++) {
+        const float u = u_da_faixa(g, f);
+        if (sustentando & (1u << f)) chama_sustain(ren, p, g, u, COR_TRASTE[f]);
+        const double idade = g->t - g->acerto_t[f];
+        if (idade >= 0.0 && idade < EXPLOSAO_DURACAO) explosao(ren, p, u, COR_TRASTE[f], idade);
     }
 }
 
@@ -183,41 +306,27 @@ static void notas_demo(SDL_Renderer *ren, const Pista *p, const Game *g)
 void pista_desenha(SDL_Renderer *ren, const Game *g)
 {
     const Pista p = pista_padrao();
+    const SDL_Color borda = g->sp_ativo ? COR_CIANO : COR_ACENTO;
 
-    /* 1. o corpo da pista */
-    faixa(ren, &p, 0.0f, 1.0f, (SDL_Color){ 12, 8, 24, 230 }, false);
+    /* última nota que aparece (o começo é g->primeira_visivel, mantido pelo jogo) */
+    const double limite = g->t + Game_janela_visivel(g);
+    int ultima = g->primeira_visivel - 1;
+    while (ultima + 1 < g->chart.n && g->chart.notas[ultima + 1].t <= limite) ultima++;
 
-    /* 2. faixas acesas pelos trastes segurados */
-    for (int i = 0; i < ACAO_N_TRASTES; i++) {
-        if (!(g->segurados & ACAO_BIT(i))) continue;
-        const float u = u_da_faixa(g, i);
-        faixa(ren, &p, u - 0.1f, u + 0.1f, cor_alfa(COR_TRASTE[i], 0.45f), true);
-    }
-
-    /* 3. divisórias e bordas */
+    /* 1. corpo (azulado com o star power ativo), divisórias, bordas */
+    corpo(ren, &p, g->sp_ativo ? (SDL_Color){ 10, 28, 60, 235 } : (SDL_Color){ 12, 8, 24, 230 });
     for (int i = 1; i < 5; i++) trilho(ren, &p, i / 5.0f, 2.0f, (SDL_Color){ 255, 255, 255, 50 });
-    trilho(ren, &p, 0.0f, 5.0f, COR_ACENTO);
-    trilho(ren, &p, 1.0f, 5.0f, COR_ACENTO);
+    trilho(ren, &p, 0.0f, 5.0f, borda);
+    trilho(ren, &p, 1.0f, 5.0f, borda);
 
-    /* 4. linhas de batida descendo (compasso de 4 mais forte) */
-    const double batida = 60.0 / DEMO_BPM;
-    const double janela = Game_janela_visivel(g);
-    for (int k = (int)SDL_ceil(g->t / batida); ; k++) {
-        const float z = (float)((k * batida - g->t) / janela);
-        if (z > 1.0f) break;
-        const bool compasso = (k % 4) == 0;
-        travessa(ren, &p, z, compasso ? 4.0f : 2.0f, 0.0f,
-                 cor_alfa((SDL_Color){ 255, 255, 255, compasso ? 120 : 55 }, some_no_topo(z)));
-    }
+    /* 2. batidas descendo e a linha de acerto */
+    batidas(ren, &p, g);
+    travessa(ren, &p, 0.0f, 6.0f, 0.02f, cor_alfa(g->sp_ativo ? COR_CIANO : COR_TEXTO, 0.8f));
 
-    /* 5. linha de acerto: pisca na palhetada */
-    const double desde = g->t - g->t_palheta;
-    const float flash = desde < 0.12 ? (float)(1.0 - desde / 0.12) : 0.0f;
-    travessa(ren, &p, 0.0f, 6.0f + 6.0f * flash, 0.02f,
-             cor_mistura((SDL_Color){ 230, 230, 240, 200 }, COR_CIANO, flash));
-
-    /* 6. alvos, depois as notas por cima */
+    /* 3. caudas dos sustains, alvos, notas por cima, efeitos por cima de tudo */
+    caudas(ren, &p, g, ultima);
     for (int i = 0; i < ACAO_N_TRASTES; i++)
         alvo(ren, &p, u_da_faixa(g, i), COR_TRASTE[i], (g->segurados & ACAO_BIT(i)) != 0);
-    notas_demo(ren, &p, g);
+    notas(ren, &p, g, ultima);
+    efeitos(ren, &p, g, ultima);
 }

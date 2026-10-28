@@ -23,6 +23,8 @@ chmod +x "$DIST/Ark Hero.sh"
 #     a particao de ROMS e FAT32/exFAT. O -L resolve qualquer link no caminho.
 if [ -d "$ROOT/assets" ]; then
     cp -rL "$ROOT/assets" "$PORT/assets"
+    # as musicas de teste nunca vao no pacote: tem direitos autorais
+    rm -rf "$PORT/assets/musics"
     echo "++ incluido assets/ ($(du -sh "$PORT/assets" | cut -f1))"
 fi
 

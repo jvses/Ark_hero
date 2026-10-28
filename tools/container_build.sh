@@ -54,12 +54,69 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 1b) Audio: libogg, libvorbis, opus e opusfile (Xiph), ESTATICAS.
+#     Ao contrario da SDL, elas nao carregam nada do sistema por dlopen: podem
+#     ir para dentro do binario, e o pacote continua sem .so novo.
+#     Ficam em third_party/xiph-<arch>/ (apague a pasta para refazer).
+# ---------------------------------------------------------------------------
+XIPH_PREFIX="$ROOT/third_party/xiph-$ARCH"
+if [ ! -f "$XIPH_PREFIX/lib/libopusfile.a" ]; then
+    rm -rf "$XIPH_PREFIX" "$ROOT/build/xiph-$ARCH"
+    mkdir -p "$ROOT/build/xiph-$ARCH"
+
+    # extrai third_party/src/<nome>-*.tar.gz e imprime a pasta
+    extrai() {
+        local tarball
+        tarball="$(ls -1 "$ROOT"/third_party/src/"$1"-*.tar.gz | head -1)"
+        [ -f "$tarball" ] || { echo "ERRO: $1-*.tar.gz nao encontrado em third_party/src/" >&2; exit 1; }
+        local dir="$ROOT/build/xiph-$ARCH/$1"
+        mkdir -p "$dir"
+        tar xzf "$tarball" -C "$dir" --strip-components=1
+        echo "$dir"
+    }
+
+    # biblioteca com CMake: estatica, com -fPIC (o jogo e um executavel PIE)
+    cmake_lib() {
+        local nome="$1"; shift
+        local src; src="$(extrai "$nome")"
+        echo "==> compilando $nome"
+        cmake -S "$src" -B "$src/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$XIPH_PREFIX" \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DCMAKE_PREFIX_PATH="$XIPH_PREFIX" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_TESTING=OFF \
+            "$@"
+        cmake --build "$src/build" -j "$JOBS"
+        cmake --install "$src/build"
+    }
+
+    cmake_lib libogg    -DINSTALL_DOCS=OFF
+    cmake_lib libvorbis
+    cmake_lib opus      -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF
+
+    # opusfile 0.12 nao tem CMake; o configure ja vem pronto no tarball
+    SRC_OPUSFILE="$(extrai opusfile)"
+    echo "==> compilando opusfile"
+    ( cd "$SRC_OPUSFILE" && \
+      PKG_CONFIG_PATH="$XIPH_PREFIX/lib/pkgconfig" ./configure --prefix="$XIPH_PREFIX" \
+          --enable-static --disable-shared --with-pic \
+          --disable-http --disable-examples --disable-doc && \
+      make -j "$JOBS" && make install )
+else
+    echo "==> audio (Xiph) ja compilado em $XIPH_PREFIX (apague a pasta pra refazer)"
+fi
+
+# ---------------------------------------------------------------------------
 # 2) O jogo
 # ---------------------------------------------------------------------------
 echo "==> compilando Ark Hero"
 cmake -S "$ROOT" -B "$ROOT/build/$ARCH" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_PREFIX_PATH="$SDL_PREFIX" \
+    -DCMAKE_PREFIX_PATH="$SDL_PREFIX;$XIPH_PREFIX" \
+    -DARKHERO_AUDIO_STATIC=ON \
     -DARKHERO_ARCH="$ARCH"
 cmake --build "$ROOT/build/$ARCH" -j "$JOBS"
 

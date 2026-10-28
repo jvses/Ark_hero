@@ -15,6 +15,7 @@ static const int IMAGEM_DA_TELA[TELA_N] = {
     [TELA_INICIO]    = IMAGEM_INICIO,
     [TELA_CONFIG]    = IMAGEM_CONFIG,
     [TELA_CONTROLES] = IMAGEM_CONFIG,
+    [TELA_AUDIO]     = IMAGEM_CONFIG,
     [TELA_JOGO]      = IMAGEM_JOGO,
 };
 
@@ -104,7 +105,9 @@ static void titulo(SDL_Renderer *ren, const Game *g, const Menu *m)
         texto(ren, LARG / 2 - texto_largura(m->titulo, 5) / 2, 43, 5, COR_TEXTO, m->titulo);
         texto_centro(ren, LARG / 2, 96, 1, COR_CIANO, "um jogo de ritmo para o R36S");
     } else {
-        const float y = g->tela == TELA_CONTROLES ? 26 : (g->tela == TELA_JOGO ? 120 : 40);
+        float y = 40;
+        if (g->tela == TELA_CONTROLES)  y = 26;
+        else if (g->tela == TELA_JOGO)  y = g->terminou ? 36 : 120;
         texto_sombra(ren, LARG / 2 - texto_largura(m->titulo, 3) / 2, y, 3, COR_TEXTO, m->titulo);
     }
 }
@@ -140,10 +143,13 @@ static void linha(SDL_Renderer *ren, const Game *g, SDL_FRect r, const ItemMenu 
 
 static void menu_lista(SDL_Renderer *ren, const Game *g, const Menu *m, int sel)
 {
-    const float lin_h = 36, lin_esp = 6;
+    const bool  longo = m->n > 6;   /* menus compridos ficam mais justos para caber */
+    const float lin_h = longo ? 29 : 36, lin_esp = longo ? 4 : 6;
     const float painel_w = 480;
     const float painel_h = m->n * (lin_h + lin_esp) + 24;
-    const float y0 = g->tela == TELA_INICIO ? 140 : (g->tela == TELA_JOGO ? 170 : 110);
+    float y0 = 110;
+    if (g->tela == TELA_INICIO)     y0 = 140;
+    else if (g->tela == TELA_JOGO)  y0 = g->terminou ? 262 : 170;
     const SDL_FRect painel = { (LARG - painel_w) / 2, y0, painel_w, painel_h };
 
     ret_arredondado(ren, painel, 14, COR_PAINEL);
@@ -160,7 +166,7 @@ static void menu_lista(SDL_Renderer *ren, const Game *g, const Menu *m, int sel)
 /* A tela de controles: cada ação com o botão do controle e a tecla. */
 static void menu_controles(SDL_Renderer *ren, const Game *g, const Hud *h, const Menu *m, int sel)
 {
-    const float lin_h = 27, lin_esp = 3;
+    const float lin_h = 25, lin_esp = 3;
     const SDL_FRect painel = { 30, 66, LARG - 60, m->n * (lin_h + lin_esp) + 34 };
     const float x_pad = painel.x + 300, x_tecla = painel.x + 420;
 
@@ -176,6 +182,8 @@ static void menu_controles(SDL_Renderer *ren, const Game *g, const Hud *h, const
         if (item->id >= ID_MAPEAR) {
             pad   = h->pad[item->id - ID_MAPEAR];
             tecla = h->tecla[item->id - ID_MAPEAR];
+        } else if (item->id == ID_ANALOGICO) {
+            pad = h->analogico;   /* whammy (para os lados) e star power (para cima) */
         }
         linha(ren, g, r, item, i == sel, pad, x_pad, tecla, x_tecla);
 
@@ -188,6 +196,77 @@ static void menu_controles(SDL_Renderer *ren, const Game *g, const Hud *h, const
     char ultimo[80];
     SDL_snprintf(ultimo, sizeof(ultimo), "ultimo botao apertado: %s", h->ultimo ? h->ultimo : "-");
     texto(ren, painel.x + 12, painel.y + painel.h + 8, 1, COR_TEXTO_FRACO, ultimo);
+}
+
+/* relógio em m:ss.s */
+static void hora(char *buf, size_t n, double t)
+{
+    if (t < 0) t = 0;
+    SDL_snprintf(buf, n, "%d:%04.1f", (int)(t / 60.0), SDL_fmod(t, 60.0));
+}
+
+/* Tela de teste de áudio: o que foi achado, quanto a carga demorou e os
+ * dois relógios (cru e suave) andando lado a lado. */
+static void painel_audio(SDL_Renderer *ren, const HudAudio *a)
+{
+    const SDL_FRect p = { 40, 268, LARG - 80, 176 };
+    ret_arredondado(ren, p, 12, COR_PAINEL);
+    contorno_arredondado(ren, p, 12, cor_alfa(COR_CIANO, 0.6f));
+
+    char s[128];
+    float y = p.y + 14;
+    const float x = p.x + 16, passo = 16;
+
+    if (!a->ok) {
+        texto(ren, x, y, 1, (SDL_Color){ 255, 90, 90, 255 }, "Sem dispositivo de audio: o jogo roda sem som.");
+        return;
+    }
+    SDL_snprintf(s, sizeof(s), "Saida: %s, buffer de %d frames (%.0f ms)", a->driver, a->buffer_frames,
+                 1000.0 * a->buffer_frames / 48000.0);
+    texto(ren, x, y, 1, COR_TEXTO_FRACO, s);
+    y += passo + 6;
+
+    if (!a->musica) {
+        SDL_snprintf(s, sizeof(s), "Nenhuma musica em %s", a->pasta ? a->pasta : "-");
+        texto(ren, x, y, 1, COR_TEXTO, s);
+        texto(ren, x, y + passo, 1, COR_TEXTO_FRACO, "(uma pasta do Clone Hero: notes.chart + song.ini + audio)");
+        return;
+    }
+    texto(ren, x, y, 1, COR_TEXTO, a->musica);
+    y += passo;
+    texto(ren, x, y, 1, COR_TEXTO_FRACO, a->faixas);
+    if (a->ignoradas) {
+        SDL_snprintf(s, sizeof(s), "(%d faixa(s) em mp3 ignorada(s): ainda nao suportado)", a->ignoradas);
+        texto(ren, x, y + passo, 1, COR_TEXTO_FRACO, s);
+    }
+    y += 2 * passo + 4;
+
+    if (a->carga == 1) {   /* carregando: barra de progresso */
+        texto(ren, x, y, 1, COR_TEXTO, "Decodificando...");
+        const SDL_FRect barra = { x + 140, y - 1, p.w - 180, 10 };
+        ret_arredondado(ren, barra, 5, (SDL_Color){ 60, 40, 80, 255 });
+        ret_arredondado(ren, (SDL_FRect){ barra.x, barra.y, barra.w * a->progresso, barra.h }, 5, COR_CIANO);
+    } else if (a->carga_info) {
+        texto(ren, x, y, 1, a->carga == 3 ? (SDL_Color){ 255, 90, 90, 255 } : COR_TEXTO, a->carga_info);
+    }
+    y += passo + 6;
+
+    if (a->tocando) {
+        char t[16], cru[16], dur[16];
+        hora(t, sizeof(t), a->t_suave);
+        hora(cru, sizeof(cru), a->t_cru);
+        hora(dur, sizeof(dur), a->duracao);
+        SDL_snprintf(s, sizeof(s), "%s %s / %s", a->pausado ? "Pausado" : "Tocando", t, dur);
+        texto(ren, x, y, 2, COR_CIANO, s);
+        SDL_snprintf(s, sizeof(s), "relogio cru %s   diferenca suave-cru: %+.1f ms", cru,
+                     (a->t_suave - a->t_cru) * 1000.0);
+        texto(ren, x, y + 22, 1, COR_TEXTO_FRACO, s);
+
+        const float frac = a->duracao > 0 ? (float)(a->t_suave / a->duracao) : 0.0f;
+        const SDL_FRect barra = { x, y + 38, p.w - 32, 6 };
+        ret(ren, barra, (SDL_Color){ 60, 40, 80, 255 });
+        ret(ren, (SDL_FRect){ barra.x, barra.y, barra.w * (frac < 0 ? 0 : (frac > 1 ? 1 : frac)), barra.h }, COR_ACENTO);
+    }
 }
 
 /* ---------------------------------------------------------------------------
@@ -235,9 +314,9 @@ static void aviso(SDL_Renderer *ren, const Game *g)
 static void rodape(SDL_Renderer *ren, const Game *g, const Hud *h)
 {
     char dica[128];
-    if (g->tela == TELA_JOGO && !g->pausado) {
-        SDL_snprintf(dica, sizeof(dica), "[%s/%s] pausa   [Select+Start] sair",
-                     h->pad[ACAO_PAUSA], h->tecla[ACAO_PAUSA]);
+    if (g->tela == TELA_JOGO && !g->pausado && !g->terminou) {
+        SDL_snprintf(dica, sizeof(dica), "[%s] pausa   [%s / analog. cima] star power   [Select+Start] sair",
+                     h->pad[ACAO_PAUSA], h->pad[ACAO_STAR_POWER]);
     } else {
         SDL_snprintf(dica, sizeof(dica), "[%s/%s] confirmar   [%s/%s] voltar   [Esq/Dir] ajustar",
                      h->pad[ACAO_CONFIRMA], h->tecla[ACAO_CONFIRMA], h->pad[ACAO_VOLTA], h->tecla[ACAO_VOLTA]);
@@ -246,14 +325,113 @@ static void rodape(SDL_Renderer *ren, const Game *g, const Hud *h)
     texto_centro(ren, LARG / 2, ALT - 14, 1, COR_TEXTO_FRACO, dica);
 }
 
+/* ---------------------------------------------------------------------------
+ * HUD da partida
+ * ------------------------------------------------------------------------- */
+static SDL_Color cor_do_multiplicador(const Game *g)
+{
+    if (g->sp_ativo) return COR_CIANO;
+    switch (g->multiplicador) {
+    case 2:  return COR_TRASTE[4];                    /* laranja */
+    case 3:  return COR_TRASTE[0];                    /* verde   */
+    case 4:  return (SDL_Color){ 190, 100, 255, 255 }; /* roxo    */
+    default: return COR_TEXTO;
+    }
+}
+
+/* medidor de star power: barra vertical à esquerda, com a marca dos 50% */
+static void medidor_star(SDL_Renderer *ren, const Game *g)
+{
+    const SDL_FRect r = { 22, 180, 16, 200 };
+    const float cheio = r.h * g->sp_medidor;
+    const bool pronto = !g->sp_ativo && g->sp_medidor >= GAME_SP_MINIMO;
+    const float brilho = 0.5f + 0.5f * SDL_sinf((float)g->t_total * 8.0f);
+
+    const SDL_FRect moldura = { r.x - 3, r.y - 3, r.w + 6, r.h + 6 };
+    ret_arredondado(ren, moldura, 6, (SDL_Color){ 0, 0, 0, 170 });
+    contorno_arredondado(ren, moldura, 6, cor_alfa(COR_TEXTO_FRACO, 0.8f));
+    if (cheio > 0.5f) {
+        const SDL_Color c = (g->sp_ativo || pronto) ? cor_alfa(COR_CIANO, pronto ? 0.6f + 0.4f * brilho : 1.0f)
+                                                     : (SDL_Color){ 60, 140, 200, 255 };
+        ret(ren, (SDL_FRect){ r.x, r.y + r.h - cheio, r.w, cheio }, c);
+    }
+    ret(ren, (SDL_FRect){ r.x - 5, r.y + r.h * (1.0f - GAME_SP_MINIMO), r.w + 10, 2 }, COR_TEXTO);
+    texto(ren, r.x - 6, r.y + r.h + 8, 1, COR_TEXTO_FRACO, "STAR");
+
+    if (g->sp_ativo)  texto_sombra(ren, 12, r.y - 34, 1, COR_CIANO, "STAR POWER!");
+    else if (pronto)  texto_sombra(ren, 12, r.y - 34, 1, cor_alfa(COR_CIANO, 0.5f + 0.5f * brilho), "PRONTO!");
+
+    /* whammy: barrinha horizontal embaixo */
+    if (g->whammy > 0.0f) {
+        ret(ren, (SDL_FRect){ r.x - 6, r.y + r.h + 22, 40, 4 }, (SDL_Color){ 255, 255, 255, 40 });
+        ret(ren, (SDL_FRect){ r.x - 6, r.y + r.h + 22, 40 * g->whammy, 4 }, COR_ACENTO);
+    }
+}
+
+/* "Perfeito / Bom / Errou" sobre a linha de acerto, sumindo em meio segundo */
+static void julgamento(SDL_Renderer *ren, const Game *g)
+{
+    const double idade = g->t - g->ultimo_julgamento_t;
+    if (idade < 0.0 || idade > 0.5) return;
+    const float a = 1.0f - (float)(idade / 0.5);
+    const float y = 318.0f - 14.0f * (float)(idade / 0.5);
+
+    if (g->ultimo_foi_erro) {
+        texto_centro(ren, LARG / 2, y, 2, cor_alfa((SDL_Color){ 255, 80, 80, 255 }, a), "ERROU");
+        return;
+    }
+    const bool perfeito = SDL_fabs(g->ultimo_erro_tempo) <= GAME_JANELA_PERFEITO;
+    texto_centro(ren, LARG / 2, y, 2, cor_alfa(perfeito ? COR_CIANO : COR_TEXTO, a), perfeito ? "PERFEITO" : "BOM");
+
+    char ms[24];   /* negativo = adiantado: ajuda a perceber o atraso da tela/som */
+    SDL_snprintf(ms, sizeof(ms), "%+.0f ms", g->ultimo_erro_tempo * 1000.0);
+    texto_centro(ren, LARG / 2, y + 20, 1, cor_alfa(COR_TEXTO_FRACO, a), ms);
+}
+
 static void hud_jogo(SDL_Renderer *ren, const Game *g)
 {
-    texto_sombra(ren, 12, 10, 2, COR_TEXTO, "PISTA DE TESTE");
-    texto(ren, 12, 32, 1, COR_TEXTO_FRACO, "notas de demonstracao, sem musica");
+    char s[48];
 
-    char t[32];
-    SDL_snprintf(t, sizeof(t), "%5.1f s", g->t);
-    texto(ren, 12, 46, 1, COR_TEXTO_FRACO, t);
+    /* música e tempo, no canto */
+    texto_sombra(ren, 12, 10, 1, COR_TEXTO, g->chart.titulo);
+    hora(s, sizeof(s), g->t);
+    texto(ren, 12, 22, 1, COR_TEXTO_FRACO, s);
+
+    /* pontos, multiplicador e combo, à direita */
+    SDL_snprintf(s, sizeof(s), "%ld", (long)g->pontos);
+    texto_sombra(ren, LARG - texto_largura(s, 3) - 14, 24, 3, COR_TEXTO, s);
+
+    const SDL_Color cm = cor_do_multiplicador(g);
+    elipse(ren, 586, 106, 62, 62, (SDL_Color){ 0, 0, 0, 170 });
+    elipse(ren, 586, 106, 56, 56, cor_alfa(cm, 0.25f));
+    SDL_snprintf(s, sizeof(s), "x%d", g->multiplicador);
+    texto_centro(ren, 586, 94, 3, cm, s);
+
+    texto_centro(ren, 586, 148, 1, COR_TEXTO_FRACO, "COMBO");
+    SDL_snprintf(s, sizeof(s), "%d", g->combo);
+    texto_centro(ren, 586, 160, 2, COR_TEXTO, s);
+
+    medidor_star(ren, g);
+    julgamento(ren, g);
+}
+
+/* tela de fim: o resumo da partida (o menu vem por baixo, no Draw_frame) */
+static void resultado(SDL_Renderer *ren, const Game *g)
+{
+    char s[64];
+    const int total = g->acertos + g->erros;
+    const SDL_FRect p = { 120, 92, LARG - 240, 156 };
+    ret_arredondado(ren, p, 14, COR_PAINEL);
+    contorno_arredondado(ren, p, 14, cor_alfa(COR_CIANO, 0.7f));
+
+    SDL_snprintf(s, sizeof(s), "%ld pontos", (long)g->pontos);
+    texto_centro(ren, LARG / 2, p.y + 18, 3, COR_TEXTO, s);
+    SDL_snprintf(s, sizeof(s), "Notas: %d / %d  (%d%%)", g->acertos, total,
+                 total ? (100 * g->acertos + total / 2) / total : 0);
+    texto_centro(ren, LARG / 2, p.y + 62, 2, COR_TEXTO, s);
+    SDL_snprintf(s, sizeof(s), "Maior combo: %d", g->maior_combo);
+    texto_centro(ren, LARG / 2, p.y + 92, 2, COR_TEXTO, s);
+    texto_centro(ren, LARG / 2, p.y + 126, 1, COR_TEXTO_FRACO, g->erros == 0 && total ? "FULL COMBO!" : g->chart.titulo);
 }
 
 static void fps(SDL_Renderer *ren, const Game *g, const Hud *h)
@@ -275,7 +453,12 @@ void Draw_frame(const Draw *d, SDL_Renderer *ren, const Game *g, const Hud *h)
     if (g->tela == TELA_JOGO) {
         pista_desenha(ren, g);
         hud_jogo(ren, g);
-        if (g->pausado) {
+        if (g->terminou) {
+            escurece(ren, 0.65f);
+            titulo(ren, g, m);
+            resultado(ren, g);
+            menu_lista(ren, g, m, Game_menu_sel(g));
+        } else if (g->pausado) {
             escurece(ren, 0.55f);
             titulo(ren, g, m);
             menu_lista(ren, g, m, Game_menu_sel(g));
@@ -284,6 +467,7 @@ void Draw_frame(const Draw *d, SDL_Renderer *ren, const Game *g, const Hud *h)
         titulo(ren, g, m);
         if (g->tela == TELA_CONTROLES) menu_controles(ren, g, h, m, Game_menu_sel(g));
         else                           menu_lista(ren, g, m, Game_menu_sel(g));
+        if (g->tela == TELA_AUDIO) painel_audio(ren, &h->audio);
     }
 
     rodape(ren, g, h);

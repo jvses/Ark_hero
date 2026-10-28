@@ -19,6 +19,7 @@ typedef enum {
     ACAO_PALHETA_CIMA,
     ACAO_PALHETA_BAIXO,
     ACAO_STAR_POWER,
+    ACAO_WHAMMY,          /* no controle vem do analógico; esta ação é a tecla */
     ACAO_PAUSA,
 
     /* navegação de menu: fixas, para ninguém se trancar fora do jogo */
@@ -46,6 +47,7 @@ typedef enum {
 typedef struct {
     uint32_t segurados;   /* bit ligado = está apertado agora */
     uint32_t apertados;   /* bit ligado = foi apertado desde o frame anterior (false -> true) */
+    float    whammy;      /* 0..1: quanto a alavanca está puxada (analógico ou tecla) */
 } Botoes;
 
 const char *Acao_id(Acao a);       /* nome no arquivo de controles: "verde" */
