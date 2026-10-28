@@ -1,4 +1,5 @@
-/* Os menus do jogo, como dados. Para criar um item novo basta acrescentar uma
+/* Os menus fixos do jogo, como dados (os de músicas e dificuldades são
+ * montados em game.c, a partir do que foi encontrado). Para criar um item novo basta acrescentar uma
  * linha aqui e tratar o id em executa() / ajusta() no game.c.
  * Rótulos só em ASCII: a fonte de debug da SDL não tem acentos. */
 
@@ -9,16 +10,16 @@
 #define N_ITENS(v) ((int)(sizeof(v) / sizeof((v)[0])))
 
 static const ItemMenu ITENS_INICIO[] = {
-    { "Jogar (pista de teste)", ID_JOGAR,   ITEM_BOTAO, false },
-    { "Biblioteca de musicas",  ID_MUSICAS, ITEM_BOTAO, true  },
-    { "Configuracoes",          ID_CONFIG,  ITEM_BOTAO, false },
-    { "Sair",                   ID_SAIR,    ITEM_BOTAO, false },
+    { "Jogar",         ID_JOGAR,  ITEM_BOTAO, false },
+    { "Configuracoes", ID_CONFIG, ITEM_BOTAO, false },
+    { "Sair",          ID_SAIR,   ITEM_BOTAO, false },
 };
 
 static const ItemMenu ITENS_CONFIG[] = {
     { "Controles",           ID_CONTROLES,  ITEM_BOTAO, false },
     { "Modo de jogo",        ID_MODO,       ITEM_OPCAO, false },
     { "Velocidade da pista", ID_VELOCIDADE, ITEM_OPCAO, false },
+    { "Modo precisao",       ID_PRECISAO,   ITEM_OPCAO, false },
     { "Modo canhoto",        ID_CANHOTO,    ITEM_OPCAO, false },
     { "Mostrar FPS",         ID_FPS,        ITEM_OPCAO, false },
     { "Volume",              ID_VOLUME,     ITEM_OPCAO, false },
@@ -93,6 +94,7 @@ void Menu_valor(const Game *g, int id, char *buf, size_t n)
     case ID_MODO:       snprintf(buf, n, "%s", "Controle");                break;
     case ID_VELOCIDADE: snprintf(buf, n, "%d", o->velocidade);            break;
     case ID_CANHOTO:    snprintf(buf, n, "%s", o->canhoto ? "Sim" : "Nao"); break;
+    case ID_PRECISAO:   snprintf(buf, n, "%s", o->precisao ? "Sim" : "Nao"); break;
     case ID_FPS:        snprintf(buf, n, "%s", o->mostrar_fps ? "Sim" : "Nao"); break;
     case ID_VOLUME:     snprintf(buf, n, "%d%%", o->volume);              break;
     default:            if (n > 0) buf[0] = '\0';                         break;

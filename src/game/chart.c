@@ -64,6 +64,20 @@ static bool batidas_regulares(Chart *c)
     return true;
 }
 
+/* frases de star power numeradas (1, 2, 3...): notas STAR seguidas são da
+   mesma frase. Só quando ninguém numerou antes (o parser já numera). */
+static void numera_frases(Chart *c)
+{
+    for (int i = 0; i < c->n; i++)
+        if (c->notas[i].frase) return;
+    uint16_t frase = 0;
+    for (int i = 0; i < c->n; i++) {
+        if (!(c->notas[i].flags & NOTA_STAR)) continue;
+        if (i == 0 || !(c->notas[i - 1].flags & NOTA_STAR)) frase++;
+        c->notas[i].frase = frase;
+    }
+}
+
 static void calcula_fim(Chart *c)
 {
     c->fim = 0.0;
@@ -87,6 +101,7 @@ bool Chart_demo(Chart *c)
         c->notas[i].flags   = DEMO[i].flags;
     }
     calcula_fim(c);
+    numera_frases(c);
     strcpy(c->titulo, "Demonstracao");
     if (!batidas_regulares(c)) { Chart_free(c); return false; }
     Chart_reset(c);
@@ -101,6 +116,7 @@ bool Chart_from_notes(Chart *c, const Nota *notas, int n)
     memcpy(c->notas, notas, sizeof(Nota) * (size_t)n);
     c->n = n;
     calcula_fim(c);
+    numera_frases(c);
     strcpy(c->titulo, "Teste");
     if (!batidas_regulares(c)) { Chart_free(c); return false; }
     Chart_reset(c);

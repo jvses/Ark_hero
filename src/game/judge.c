@@ -1,7 +1,7 @@
 /* O juiz, no "modo controle" (o padrão do jogo):
  *
  *  - apertar o botão de um traste no tempo da nota já é tocar a nota;
- *    não existe palhetada;
+ *    não existe palhetada. A janela é de ±100 ms, ou ±70 ms no modo precisão;
  *  - acorde: a nota é acertada quando todos os botões dela estão apertados,
  *    sendo o último apertado dentro da janela de tempo;
  *  - apertar um botão sem nota não é punido (como no modo controle do
@@ -23,7 +23,20 @@ static void emite(Game *g, TipoEvento tipo, int nota, double valor)
 /* a nota i é a última da sua frase de star power? */
 static bool fim_de_frase(const Game *g, int i)
 {
-    return i + 1 >= g->chart.n || !(g->chart.notas[i + 1].flags & NOTA_STAR);
+    return i + 1 >= g->chart.n || g->chart.notas[i + 1].frase != g->chart.notas[i].frase;
+}
+
+/* a nota usa o traste f? (a aberta aceita qualquer um) */
+static bool usa_traste(const Nota *n, int f)
+{
+    return (n->flags & NOTA_ABERTA) || (n->mascara & (1u << f));
+}
+
+/* os botões da nota estão todos apertados? (a aberta: qualquer botão) */
+static bool firme(const Nota *n, uint32_t botoes)
+{
+    if (n->flags & NOTA_ABERTA) return (botoes & ACAO_BITS_TRASTES) != 0;
+    return (botoes & n->mascara) == n->mascara;
 }
 
 static void avanca_proxima(Game *g)
@@ -44,10 +57,12 @@ static void acerta(Game *g, int i)
     g->acertos++;
 
     for (int f = 0; f < 5; f++)
-        if (n->mascara & (1u << f)) g->acerto_t[f] = g->t;
+        if (usa_traste(n, f)) g->acerto_t[f] = g->t;
     g->ultimo_julgamento_t = g->t;
     g->ultimo_erro_tempo   = erro;
     g->ultimo_foi_erro     = false;
+    g->soma_erro  += erro;
+    g->soma_erro2 += erro * erro;
     emite(g, EV_ACERTO, i, erro);
 
     if ((n->flags & NOTA_STAR) && fim_de_frase(g, i)) {
@@ -82,10 +97,10 @@ static int nota_do_traste(const Game *g, int f)
 {
     for (int i = g->proxima; i < g->chart.n; i++) {
         const Nota *n = &g->chart.notas[i];
-        if (n->t > g->t + GAME_JANELA_ACERTO) break;   /* daqui pra frente, cedo demais */
+        if (n->t > g->t + Game_janela_acerto(g)) break;   /* daqui pra frente, cedo demais */
         if (n->estado != NOTA_PENDENTE) continue;
-        if (n->t < g->t - GAME_JANELA_ACERTO) continue; /* tarde demais: a varredura cuida */
-        if (n->mascara & (1u << f)) return i;
+        if (n->t < g->t - Game_janela_acerto(g)) continue; /* tarde demais: a varredura cuida */
+        if (usa_traste(n, f)) return i;
     }
     return -1;
 }
@@ -102,8 +117,7 @@ void Judge_toques(Game *g, uint32_t apertados, uint32_t segurados)
         const int i = nota_do_traste(g, f);
         if (i < 0) continue;   /* aperto sem nota: sem punição */
 
-        const uint8_t m = g->chart.notas[i].mascara;
-        if ((firmes & m) == m) acerta(g, i);   /* acorde completo (ou nota simples) */
+        if (firme(&g->chart.notas[i], firmes)) acerta(g, i);   /* acorde completo (ou nota simples) */
         /* senão: acorde pela metade; o próximo botão apertado completa */
     }
 }
@@ -112,18 +126,18 @@ void Judge_sustains(Game *g, uint32_t segurados, double dt)
 {
     for (int i = g->primeira_visivel; i < g->chart.n; i++) {
         Nota *n = &g->chart.notas[i];
-        if (n->t > g->t + GAME_JANELA_ACERTO) break;
+        if (n->t > g->t + Game_janela_acerto(g)) break;
         if (!n->segurando) continue;
 
         const double fim = n->t + n->duracao;
-        const bool firme = (segurados & n->mascara) == n->mascara;
+        const bool segura = firme(n, segurados);
 
         if (g->t >= fim) {                            /* chegou ao fim */
             n->segurando = false;
             n->solto     = fim;
             const double parte = dt - (g->t - fim);   /* só o pedaço antes do fim */
             if (parte > 0.0) emite(g, EV_SUSTAIN, i, parte);
-        } else if (!firme) {                          /* soltou */
+        } else if (!segura) {                         /* soltou */
             n->segurando = false;
             n->solto     = (fim - g->t <= GAME_SUSTAIN_FOLGA) ? fim : g->t;
         } else {
@@ -141,7 +155,7 @@ void Judge_varre_erros(Game *g)
 {
     for (int i = g->proxima; i < g->chart.n; i++) {
         const Nota *n = &g->chart.notas[i];
-        if (n->t >= g->t - GAME_JANELA_ACERTO) break;
+        if (n->t >= g->t - Game_janela_acerto(g)) break;
         if (n->estado == NOTA_PENDENTE) erra(g, i);
     }
     avanca_proxima(g);

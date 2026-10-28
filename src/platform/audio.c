@@ -76,6 +76,7 @@ void Audio_play(Audio *a, const Pcm *pcm, double atraso_s)
     a->silencio = atraso_s > 0.0 ? (Sint64)(atraso_s * AUDIO_TAXA) : 0;
     a->pausado  = false;
     a->suave_ok = false;
+    a->saltos   = 0;
     SDL_ResumeAudioStreamDevice(a->stream);
     Audio_update(a);
 }
@@ -163,8 +164,12 @@ double Audio_song_time(Audio *a, Uint64 agora_ns)
     a->ultimo_ns = agora_ns;
 
     const double erro = cru - a->t_suave;
-    if (SDL_fabs(erro) > SUAVE_SALTO) a->t_suave = cru;      /* longe demais: pula */
-    else                              a->t_suave += erro * SUAVE_CORRECAO;
+    if (SDL_fabs(erro) > SUAVE_SALTO) {                      /* longe demais: pula */
+        a->t_suave = cru;
+        a->saltos++;
+    } else {
+        a->t_suave += erro * SUAVE_CORRECAO;
+    }
     return a->t_suave;
 }
 

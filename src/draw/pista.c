@@ -26,6 +26,7 @@
 #define EXPLOSAO_DURACAO  0.30    /* segundos da animação de acerto */
 
 static const SDL_Color COR_APAGADA = { 110, 110, 120, 255 };   /* nota perdida */
+static const SDL_Color COR_ABERTA  = { 175,  80, 255, 255 };   /* nota aberta (sem traste) */
 
 typedef struct {
     float cx, y_base, larg_base;
@@ -183,10 +184,12 @@ static void caudas(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
         if (n->duracao <= 0.0) continue;
         const double fim = n->t + n->duracao;
 
+        /* aberta: uma cauda só, no meio */
+        const bool aberta = n->flags & NOTA_ABERTA;
         for (int f = 0; f < ACAO_N_TRASTES; f++) {
-            if (!(n->mascara & (1u << f))) continue;
+            if (aberta ? f != 2 : !(n->mascara & (1u << f))) continue;
             const float u = u_da_faixa(g, f);
-            const SDL_Color c = (n->flags & NOTA_STAR) ? COR_CIANO : COR_TRASTE[f];
+            const SDL_Color c = (n->flags & NOTA_STAR) ? COR_CIANO : (aberta ? COR_ABERTA : COR_TRASTE[f]);
 
             if (n->estado == NOTA_PENDENTE) {
                 cauda(ren, p, g, u, n->t, fim, cor_alfa(c, 0.75f), false);
@@ -224,6 +227,20 @@ static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color 
     elipse(ren, c.x, c.y - h * 0.10f, w * 0.26f, h * 0.24f, cor_alfa(COR_TEXTO, a * 0.85f));
 }
 
+/* nota aberta: uma barra que atravessa as cinco faixas */
+static void nota_aberta(SDL_Renderer *ren, const Pista *p, float z, SDL_Color cor, bool star)
+{
+    const float f = escala(p, z);
+    const float a = some_no_topo(z);
+    const SDL_FPoint e = ponto(p, 0.06f, z), d = ponto(p, 0.94f, z);
+    const float h = 12.0f * f;
+    const SDL_FRect r = { e.x, e.y - h / 2, d.x - e.x, h };
+    ret_arredondado(ren, (SDL_FRect){ r.x - 2, r.y + 1, r.w + 4, r.h + 3 }, h / 2, cor_alfa((SDL_Color){ 0, 0, 0, 200 }, a));
+    ret_arredondado(ren, r, h / 2, cor_alfa(star ? cor_mistura(cor, COR_TEXTO, 0.5f) : cor, a));
+    ret_arredondado(ren, (SDL_FRect){ r.x + 6, r.y + h * 0.2f, r.w - 12, h * 0.3f }, h * 0.15f,
+                    cor_alfa(COR_TEXTO, 0.6f * a));
+}
+
 static void notas(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
 {
     /* da mais longe para a mais perto: a de perto fica por cima */
@@ -234,6 +251,11 @@ static void notas(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
         if (z < -0.08f || z > 1.0f) continue;
 
         const bool perdida = n->estado == NOTA_PERDIDA;
+        if (n->flags & NOTA_ABERTA) {
+            nota_aberta(ren, p, z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : COR_ABERTA,
+                        !perdida && (n->flags & NOTA_STAR));
+            continue;
+        }
         for (int f = 0; f < ACAO_N_TRASTES; f++) {
             if (!(n->mascara & (1u << f))) continue;
             nota(ren, p, u_da_faixa(g, f), z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : COR_TRASTE[f],
@@ -290,7 +312,8 @@ static void efeitos(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima
 {
     uint8_t sustentando = 0;   /* faixas com sustain sendo segurado */
     for (int i = g->primeira_visivel; i <= ultima; i++)
-        if (g->chart.notas[i].segurando) sustentando |= g->chart.notas[i].mascara;
+        if (g->chart.notas[i].segurando)
+            sustentando |= (g->chart.notas[i].flags & NOTA_ABERTA) ? 0x04 : g->chart.notas[i].mascara;
 
     for (int f = 0; f < ACAO_N_TRASTES; f++) {
         const float u = u_da_faixa(g, f);

@@ -10,9 +10,10 @@ a direção do João. Cada etapa é testada no R36S antes do commit.
 |---|---|---|
 | 0 | Arrumar a casa: módulos, input com remapeamento, menus, pista | feita e testada no R36S (commit `f0f7eb9`) |
 | 1 | Jogabilidade com notas de demonstração: juiz (modo controle), sustains, whammy, star power, placar | feita, testada no PC; falta o R36S |
-| 2 | Áudio: Opus, Vorbis e WAV, mistura das faixas, relógio mestre | **feita, testada no PC; falta o R36S** |
-| 3 | Parser de `.chart` + mapa de tempo + testes | próxima |
-| 4 | Pista com as notas de uma música de verdade | |
+| 2 | Áudio: Opus, Vorbis e WAV, mistura das faixas, relógio mestre | feita, testada no PC (commit `31548dd`); falta o R36S |
+| 3 | Parser de `.chart` + mapa de tempo + testes | feita e jogada no PC; falta o R36S |
+| 4 | Pista com as notas de uma música de verdade, escolha de música e dificuldade | feita junto com a 3 |
+| 4b | Ajustes: janela de acerto, modo precisão, logs, procura de músicas, navegação, placar | **feita; falta testar** |
 | 5 | Lua: `config.lua` e `regras.lua`, com recarga a quente | |
 | 6 | Calibração de áudio e vídeo | |
 | 7 | Biblioteca de músicas + cache | |
@@ -338,3 +339,163 @@ ele deve ser bem maior que no PC; se passar de uns 15 s, a próxima melhoria
 - Volume por faixa e silenciar a guitarra quando erra (estratégia "dois
   streams" da conversa inicial).
 - O `delay` do `song.ini` e o `Offset` do `.chart` entram com o parser.
+
+---
+
+## Etapas 3 e 4: parser de `.chart`, escolha de música e dificuldade (2026-10-28)
+
+### Pedido
+
+Depois do teste no PC (metrônomo funcionando, jogabilidade melhor; o star
+power ainda não foi testado, por ser no teclado):
+- implementar a leitura dos arquivos das músicas (`notes.chart` e cia.);
+- se possível, já jogar a música de teste com escolha de dificuldade.
+
+### O que foi feito
+
+**Parser de `.chart`** (`game/chartfile.c`, sem SDL):
+- `[Song]`: `Resolution` e `Offset`; `[SyncTrack]`: andamento (`B`) e
+  compasso (`TS`, inclusive `6/8`); as quatro dificuldades da guitarra.
+- **Mapa de tempo**: montado uma vez na leitura; tick -> segundos é uma
+  busca binária (a música de teste tem 504 mudanças de andamento).
+- Notas no mesmo tick viram um acorde; `N 5` (HOPO forçado) e `N 6` (tap)
+  viram flags para o futuro modo guitarra; `N 7` é a nota aberta;
+  `S 2` são as frases de star power, agora numeradas (duas frases coladas
+  não se misturam).
+- Sustain mais curto que uma semicolcheia vira nota simples.
+- `delay` do `song.ini` e `Offset` do chart deslocam as notas.
+- Linhas de batida a cada semínima, a primeira de cada compasso forte.
+- Quando a primeira nota vem cedo, a partida começa antes da música
+  (2,5 s de preparação, com a pista já andando e o áudio em silêncio).
+- O `notes.chart` de teste é lido em **1,9 ms**.
+
+**Fluxo de jogo**, como no Clone Hero:
+**Jogar -> Músicas -> Dificuldade -> Carregando -> partida**.
+- Músicas: todas as pastas encontradas em `songs/` e `assets/musics/`,
+  com nome, artista, charter e duração (do `song.ini`), mais a
+  "Demonstração (sem música)". A lista rola; nomes compridos são cortados;
+  caracteres fora do ASCII viram `?` (a fonte de debug não tem acentos).
+- Dificuldade: só as que existem, com o número de notas de cada uma.
+- Carregando: barra de progresso da decodificação; Voltar cancela. Uma
+  música já decodificada não é decodificada de novo.
+- Na partida toca a **música de verdade**, e o relógio do jogo é o do
+  áudio. Se o áudio falhar, toca o metrônomo e avisa.
+- A partida acaba quando acabam as notas **e** a música. "Sair para o
+  menu" volta para a lista de músicas.
+
+**Nota aberta** (para outras músicas): barra roxa que atravessa a pista;
+no modo controle, qualquer botão acerta.
+
+**Bug encontrado pelos testes:** os ids da pausa ("Reiniciar", "Sair")
+caíam na faixa numérica das dificuldades e executavam a ação errada. A
+ordem do enum foi corrigida, com um comentário explicando a regra.
+
+**Testes:** 21 no `test_game`. Os novos cobrem:
+- o parser: tempos com a mudança de andamento, acorde, sustains curto e
+  longo, aberta, frases coladas, preparação, compasso, `delay`;
+- a nota aberta e as duas frases numa partida;
+- o fluxo completo de escolha (música, dificuldade, cancelar a carga,
+  áudio pronto).
+
+Fora dos testes automáticos, um jogador automático tocou o chart real
+inteiro nas quatro dificuldades: **full combo em todas** (Expert: 1240
+notas, com notas a 37 ms uma da outra no solo), terminando em 255 s, com
+a música.
+
+### Como testar
+
+No PC: Jogar > Cliffs Of Dover > Expert (ou outra dificuldade). A música
+toca e as notas descem nela. No R36S: copiar a pasta da música para
+`ports/arkhero/songs/`.
+
+### Pendências
+
+- Formato `.mid` (muitas músicas da comunidade usam só ele; a música de
+  teste tem os dois) e `.sng`.
+- Seções do `[Events]` (para o modo treino) e solos.
+- A lista de músicas é lida a cada abertura do jogo; com bibliotecas
+  grandes, vai precisar do cache (etapa 7).
+- Calibração do atraso (etapa 6): no PC o PipeWire teve ~74 ms de atraso
+  de partida, que já não desalinha nada, mas o atraso do fone/alto-falante
+  e da tela ainda não é compensado.
+
+---
+
+## Etapa 4b: ajustes depois de jogar no PC (2026-10-28)
+
+### Pedido
+
+Depois de jogar a música de teste no PC (desempenho muito bom):
+- janela de acerto mais folgada, com um "modo precisão" que guarde a atual;
+- mais logs, para trazer do R36S;
+- procurar músicas novas nas pastas e acrescentar na lista;
+- navegação para pular várias opções de uma vez (listas grandes);
+- pontuação e multiplicador mais para baixo na tela durante a partida.
+
+### O que foi feito
+
+**Janela de acerto:** o padrão passou de ±70 ms para **±100 ms**.
+Configurações > **Modo precisão: Sim** volta para os ±70 ms. "Perfeito" é
+40% da janela (40 ms no normal, 28 ms na precisão).
+
+**Procura de músicas** (`platform/musica.c`):
+- roda numa thread, ao abrir o jogo e pelo item "Procurar musicas novas"
+  no fim da lista; a tela mostra "procurando... N encontradas";
+- desce até 6 níveis de pastas (Artista/Álbum/Música...);
+- lê os `song.ini` dentro da thread; o main só interpreta o texto;
+- a lista sai **ordenada pelo título**; a música selecionada e a já
+  decodificada continuam valendo depois de procurar de novo;
+- a lista nova só é aplicada fora da partida, da escolha de dificuldade
+  e de uma carga (os índices mudam);
+- sem limite de 256 músicas: as listas crescem conforme precisam;
+- **pastas extras:** o arquivo `pastas.txt`, ao lado do `controles.cfg`
+  (no console, `ports/arkhero/conf/arkhero/pastas.txt`), tem uma pasta por
+  linha. Ele é criado na primeira vez com um exemplo. As pastas `songs/` e
+  `assets/musics/` são sempre procuradas;
+- teste com uma biblioteca falsa de 402 músicas (aninhadas, uma só com
+  `.mid`, uma sem áudio, `Notes.chart` com maiúscula, pasta extra do
+  `pastas.txt`): todas achadas e contadas certo, em 6 ms no SSD do PC.
+
+**Navegação:**
+- segurar Cima/Baixo em qualquer menu: anda um item, espera 0,4 s e
+  depois anda ~14 itens por segundo;
+- na lista de músicas, Esq/Dir pulam 7 itens (uma página);
+- a posição aparece no canto ("12/340").
+
+**Placar:** pontos, multiplicador e combo saíram do canto de cima e foram
+para uma caixa à direita, na altura do meio da pista (o mais baixo possível
+sem ficar em cima dela, que alarga perto da base). O multiplicador cresce
+um pouco quando muda.
+
+**Logs** (no console, tudo vai para `ports/arkhero/log.txt`):
+- `[arkhero]`: versão, pasta do executável, pasta dos dados;
+- `[input]`: os controles em uso; ao conectar o controle, o nome, o tipo
+  e o **mapeamento completo da SDL** (diz qual botão físico é o `a` e qual é
+  o `b`); com `ARKHERO_LOG_INPUT=1`, cada aperto, com o tempo;
+- `[audio]`: driver, buffer, latência;
+- `[musica]`: pastas procuradas, quantas músicas, quantas só com `.mid`,
+  quantas sem áudio, o tempo da procura; ao abrir uma música, o tempo de
+  leitura do chart e as notas por dificuldade;
+- `[carga]`: faixas, tempo de decodificação, velocidade, memória usada;
+- `[partida]`: no começo, música, dificuldade, janela, velocidade e se o
+  som é a música ou o metrônomo; no fim (ou ao abandonar, reiniciar,
+  fechar o jogo), pontos, notas, combo e:
+  - **erro médio de tempo dos acertos** e o desvio: é a medida para a
+    calibração (negativo = adiantado, positivo = atrasado);
+  - **frames lentos** (mais de 25 ms) e **saltos do relógio do áudio**:
+    se aparecerem, há travada ou problema no dispositivo de áudio.
+
+**Build:** os headers das bibliotecas da Xiph entram como `SYSTEM` no
+container (os avisos de dentro deles não eram do jogo): o build do R36S
+voltou a ter zero avisos.
+
+**Testes:** 23 no `test_game` (novos: modo precisão, lista de 300
+músicas, página e repetição ao segurar).
+
+### O que trazer do R36S
+
+Do `ports/arkhero/log.txt`, depois de jogar uma música inteira:
+1. as linhas `[input] controle:` e `[input] mapeamento SDL:`;
+2. as linhas `[audio]` e `[carga] ... em X s (Nx o tempo real)`;
+3. as duas linhas `[partida]` do fim (erro médio, frames lentos, saltos);
+4. as linhas `[video] fps`.

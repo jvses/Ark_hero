@@ -12,7 +12,10 @@ static const char *const ARQUIVO_IMAGEM[IMAGEM_N] = {
 };
 
 static const int IMAGEM_DA_TELA[TELA_N] = {
-    [TELA_INICIO]    = IMAGEM_INICIO,
+    [TELA_INICIO]      = IMAGEM_INICIO,
+    [TELA_MUSICAS]     = IMAGEM_INICIO,
+    [TELA_DIFICULDADE] = IMAGEM_INICIO,
+    [TELA_CARREGANDO]  = IMAGEM_JOGO,
     [TELA_CONFIG]    = IMAGEM_CONFIG,
     [TELA_CONTROLES] = IMAGEM_CONFIG,
     [TELA_AUDIO]     = IMAGEM_CONFIG,
@@ -124,7 +127,13 @@ static void linha(SDL_Renderer *ren, const Game *g, SDL_FRect r, const ItemMenu 
     }
 
     const SDL_Color c = item->em_breve ? COR_TEXTO_FRACO : (sel ? COR_TEXTO_ESCURO : COR_TEXTO);
-    texto(ren, r.x + 18, y_texto, MENU_ESCALA, c, item->rotulo);
+
+    /* rótulo comprido (nome de música) é cortado com ".." para não sair da linha */
+    char rotulo[64];
+    const int cabe = (int)((r.w - 36) / (TEXTO_PX * MENU_ESCALA));
+    SDL_strlcpy(rotulo, item->rotulo, sizeof(rotulo));
+    if (cabe > 3 && (int)SDL_strlen(rotulo) > cabe) SDL_strlcpy(rotulo + cabe - 2, "..", 3);
+    texto(ren, r.x + 18, y_texto, MENU_ESCALA, c, rotulo);
 
     if (item->em_breve) {
         const char *tag = "em breve";
@@ -143,24 +152,112 @@ static void linha(SDL_Renderer *ren, const Game *g, SDL_FRect r, const ItemMenu 
 
 static void menu_lista(SDL_Renderer *ren, const Game *g, const Menu *m, int sel)
 {
-    const bool  longo = m->n > 6;   /* menus compridos ficam mais justos para caber */
-    const float lin_h = longo ? 29 : 36, lin_esp = longo ? 4 : 6;
-    const float painel_w = 480;
-    const float painel_h = m->n * (lin_h + lin_esp) + 24;
+    /* listas compridas (as músicas) mostram uma janela que acompanha a seleção */
+    const int max_vis = g->tela == TELA_MUSICAS ? 7 : 10;
+    const int vis = m->n < max_vis ? m->n : max_vis;
+    int primeiro = sel - vis / 2;
+    if (primeiro > m->n - vis) primeiro = m->n - vis;
+    if (primeiro < 0) primeiro = 0;
+
+    /* menus compridos ficam mais justos para caber */
+    const float lin_h   = vis > 8 ? 26 : (vis > 6 ? 29 : 36);
+    const float lin_esp = vis > 8 ? 3 : (vis > 6 ? 4 : 6);
+    const float painel_w = g->tela == TELA_MUSICAS ? 560 : 480;
+    const float painel_h = vis * (lin_h + lin_esp) + 24;
     float y0 = 110;
-    if (g->tela == TELA_INICIO)     y0 = 140;
-    else if (g->tela == TELA_JOGO)  y0 = g->terminou ? 262 : 170;
+    if (g->tela == TELA_INICIO)           y0 = 140;
+    else if (g->tela == TELA_MUSICAS)     y0 = 86;
+    else if (g->tela == TELA_DIFICULDADE) y0 = 140;
+    else if (g->tela == TELA_JOGO)        y0 = g->terminou ? 262 : 170;
     const SDL_FRect painel = { (LARG - painel_w) / 2, y0, painel_w, painel_h };
 
     ret_arredondado(ren, painel, 14, COR_PAINEL);
     contorno_arredondado(ren, painel, 14, cor_alfa(COR_ACENTO, 0.6f));
 
-    for (int i = 0; i < m->n; i++) {
-        const SDL_FRect r = { painel.x + 12, painel.y + 12 + i * (lin_h + lin_esp), painel.w - 24, lin_h };
+    for (int k = 0; k < vis; k++) {
+        const int i = primeiro + k;
+        const SDL_FRect r = { painel.x + 12, painel.y + 12 + k * (lin_h + lin_esp), painel.w - 24, lin_h };
         char valor[32];
         Menu_valor(g, m->itens[i].id, valor, sizeof(valor));
         linha(ren, g, r, &m->itens[i], i == sel, valor, 0, NULL, 0);
     }
+    /* setas: tem mais lista para cima / para baixo */
+    if (primeiro > 0)
+        texto_centro(ren, LARG / 2, painel.y + 2, 1, COR_TEXTO_FRACO, "^");
+    if (primeiro + vis < m->n)
+        texto_centro(ren, LARG / 2, painel.y + painel.h - 10, 1, COR_TEXTO_FRACO, "v");
+}
+
+static void hora(char *buf, size_t n, double t);
+
+/* embaixo da lista de músicas: artista, charter e duração da selecionada */
+static void info_musica(SDL_Renderer *ren, const Game *g)
+{
+    const int sel = Game_menu_sel(g);
+    const int id  = g->menu_musicas.itens[sel].id;
+    const SDL_FRect p = { 40, 404, LARG - 80, 40 };
+    ret_arredondado(ren, p, 10, COR_PAINEL);
+
+    char s[160], dur[16];
+    if (id == ID_DEMO) {
+        SDL_strlcpy(s, "Notas de exemplo com metronomo, para testar a jogabilidade", sizeof(s));
+    } else if (id >= ID_MUSICA && id < ID_DIFICULDADE) {
+        const InfoMusica *mu = &g->musicas[id - ID_MUSICA];
+        hora(dur, sizeof(dur), mu->duracao_ms / 1000.0);
+        SDL_snprintf(s, sizeof(s), "%s  -  %s", mu->artista[0] ? mu->artista : "?", mu->duracao_ms ? dur : "?");
+        if (mu->charter[0]) {
+            char ch[96];
+            SDL_snprintf(ch, sizeof(ch), "chart: %s", mu->charter);
+            texto(ren, p.x + 14, p.y + 24, 1, COR_TEXTO_FRACO, ch);
+        }
+    } else {
+        s[0] = '\0';
+    }
+    if (id == ID_PROCURAR)
+        SDL_strlcpy(s, "Procura de novo nas pastas (songs/ e as do pastas.txt)", sizeof(s));
+    texto(ren, p.x + 14, p.y + 10, 1, COR_TEXTO, s);
+}
+
+/* em cima da lista: em que posição estamos e se a procura está andando */
+static void estado_lista(SDL_Renderer *ren, const Game *g, const Hud *h)
+{
+    char s[64];
+    SDL_snprintf(s, sizeof(s), "%d/%d", Game_menu_sel(g) + 1, g->menu_musicas.n);
+    texto(ren, LARG - 40 - texto_largura(s, 1), 72, 1, COR_TEXTO_FRACO, s);
+
+    if (h->procurando) {
+        SDL_snprintf(s, sizeof(s), "procurando musicas... %d encontrada(s)", h->achadas);
+        texto(ren, 40, 72, 1, cor_alfa(COR_CIANO, 0.6f + 0.4f * pulso(g)), s);
+    } else if (g->n_musicas == 0) {
+        texto(ren, 40, 72, 1, COR_TEXTO_FRACO, "nenhuma musica: copie pastas do Clone Hero para songs/");
+    } else {
+        SDL_snprintf(s, sizeof(s), "%d musica(s)", g->n_musicas);
+        texto(ren, 40, 72, 1, COR_TEXTO_FRACO, s);
+    }
+}
+
+static void subtitulo_musica(SDL_Renderer *ren, const Game *g, float y)
+{
+    if (g->musica < 0 || g->musica >= g->n_musicas) return;
+    const InfoMusica *mu = &g->musicas[g->musica];
+    texto_centro(ren, LARG / 2, y, 2, COR_CIANO, mu->titulo);
+    if (mu->artista[0]) texto_centro(ren, LARG / 2, y + 22, 1, COR_TEXTO_FRACO, mu->artista);
+}
+
+/* carregando: o título e a barra de progresso da decodificação */
+static void tela_carregando(SDL_Renderer *ren, const Game *g, const Hud *h)
+{
+    texto_sombra(ren, LARG / 2 - texto_largura("Carregando", 3) / 2, 120, 3, COR_TEXTO, "Carregando");
+    subtitulo_musica(ren, g, 180);
+
+    const SDL_FRect barra = { 120, 260, LARG - 240, 14 };
+    ret_arredondado(ren, barra, 7, (SDL_Color){ 40, 25, 60, 230 });
+    ret_arredondado(ren, (SDL_FRect){ barra.x, barra.y, barra.w * h->audio.progresso, barra.h }, 7, COR_CIANO);
+
+    char s[48];
+    SDL_snprintf(s, sizeof(s), "decodificando o audio: %.0f%%", 100.0f * h->audio.progresso);
+    texto_centro(ren, LARG / 2, 288, 1, COR_TEXTO_FRACO, s);
+    texto_centro(ren, LARG / 2, 330, 1, COR_TEXTO_FRACO, Dificuldade_nome(g->dificuldade));
 }
 
 /* A tela de controles: cada ação com o botão do controle e a tecla. */
@@ -314,7 +411,10 @@ static void aviso(SDL_Renderer *ren, const Game *g)
 static void rodape(SDL_Renderer *ren, const Game *g, const Hud *h)
 {
     char dica[128];
-    if (g->tela == TELA_JOGO && !g->pausado && !g->terminou) {
+    if (g->tela == TELA_MUSICAS) {
+        SDL_snprintf(dica, sizeof(dica), "[%s] escolher   [%s] voltar   [Esq/Dir] pagina   segure Cima/Baixo para rolar",
+                     h->pad[ACAO_CONFIRMA], h->pad[ACAO_VOLTA]);
+    } else if (g->tela == TELA_JOGO && !g->pausado && !g->terminou) {
         SDL_snprintf(dica, sizeof(dica), "[%s] pausa   [%s / analog. cima] star power   [Select+Start] sair",
                      h->pad[ACAO_PAUSA], h->pad[ACAO_STAR_POWER]);
     } else {
@@ -380,7 +480,7 @@ static void julgamento(SDL_Renderer *ren, const Game *g)
         texto_centro(ren, LARG / 2, y, 2, cor_alfa((SDL_Color){ 255, 80, 80, 255 }, a), "ERROU");
         return;
     }
-    const bool perfeito = SDL_fabs(g->ultimo_erro_tempo) <= GAME_JANELA_PERFEITO;
+    const bool perfeito = SDL_fabs(g->ultimo_erro_tempo) <= Game_janela_perfeito(g);
     texto_centro(ren, LARG / 2, y, 2, cor_alfa(perfeito ? COR_CIANO : COR_TEXTO, a), perfeito ? "PERFEITO" : "BOM");
 
     char ms[24];   /* negativo = adiantado: ajuda a perceber o atraso da tela/som */
@@ -397,19 +497,28 @@ static void hud_jogo(SDL_Renderer *ren, const Game *g)
     hora(s, sizeof(s), g->t);
     texto(ren, 12, 22, 1, COR_TEXTO_FRACO, s);
 
-    /* pontos, multiplicador e combo, à direita */
+    /* pontos, multiplicador e combo: à direita, perto da altura das notas que
+       importam (mais para baixo fica mais fácil de olhar sem se perder na pista).
+       A coluna termina onde a pista começa a alargar (y ~ 330). */
+    const float cx = 578;
+    ret_arredondado(ren, (SDL_FRect){ 524, 190, 108, 144 }, 10, (SDL_Color){ 0, 0, 0, 120 });
+
+    texto_centro(ren, cx, 198, 1, COR_TEXTO_FRACO, "PONTOS");
     SDL_snprintf(s, sizeof(s), "%ld", (long)g->pontos);
-    texto_sombra(ren, LARG - texto_largura(s, 3) - 14, 24, 3, COR_TEXTO, s);
+    texto_sombra(ren, cx - texto_largura(s, 2) / 2, 210, 2, COR_TEXTO, s);
 
+    /* o multiplicador cresce um pouco quando muda, e volta em 250 ms */
+    const double desde = g->t_total - g->mult_mudou_t;
+    const float pop = desde >= 0.0 && desde < 0.25 ? 1.0f + 0.3f * (float)(1.0 - desde / 0.25) : 1.0f;
     const SDL_Color cm = cor_do_multiplicador(g);
-    elipse(ren, 586, 106, 62, 62, (SDL_Color){ 0, 0, 0, 170 });
-    elipse(ren, 586, 106, 56, 56, cor_alfa(cm, 0.25f));
+    elipse(ren, cx, 262, 58 * pop, 58 * pop, (SDL_Color){ 0, 0, 0, 170 });
+    elipse(ren, cx, 262, 52 * pop, 52 * pop, cor_alfa(cm, 0.25f));
     SDL_snprintf(s, sizeof(s), "x%d", g->multiplicador);
-    texto_centro(ren, 586, 94, 3, cm, s);
+    texto_centro(ren, cx, 251, 3, cm, s);
 
-    texto_centro(ren, 586, 148, 1, COR_TEXTO_FRACO, "COMBO");
+    texto_centro(ren, cx, 298, 1, COR_TEXTO_FRACO, "COMBO");
     SDL_snprintf(s, sizeof(s), "%d", g->combo);
-    texto_centro(ren, 586, 160, 2, COR_TEXTO, s);
+    texto_centro(ren, cx, 310, 2, COR_TEXTO, s);
 
     medidor_star(ren, g);
     julgamento(ren, g);
@@ -467,7 +576,11 @@ void Draw_frame(const Draw *d, SDL_Renderer *ren, const Game *g, const Hud *h)
         titulo(ren, g, m);
         if (g->tela == TELA_CONTROLES) menu_controles(ren, g, h, m, Game_menu_sel(g));
         else                           menu_lista(ren, g, m, Game_menu_sel(g));
-        if (g->tela == TELA_AUDIO) painel_audio(ren, &h->audio);
+        if (g->tela == TELA_AUDIO)       painel_audio(ren, &h->audio);
+        if (g->tela == TELA_MUSICAS)     { info_musica(ren, g); estado_lista(ren, g, h); }
+        if (g->tela == TELA_DIFICULDADE) subtitulo_musica(ren, g, 84);
+    } else if (g->tela == TELA_CARREGANDO) {
+        tela_carregando(ren, g, h);
     }
 
     rodape(ren, g, h);

@@ -42,6 +42,8 @@ typedef struct {
     const char *ultimo;                 /* último botão apertado (diagnóstico) */
     const char *analogico;              /* analógico do whammy: "Esquerdo" / "Direito" */
     HudAudio    audio;
+    bool        procurando;             /* varredura das pastas de música em andamento */
+    int         achadas;                /* músicas achadas até agora */
 } Hud;
 
 bool Draw_init(Draw *d, SDL_Renderer *ren, const char *pasta_imagens);

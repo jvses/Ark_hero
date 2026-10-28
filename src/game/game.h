@@ -10,9 +10,14 @@
 
 #include "game/acao.h"
 #include "game/chart.h"
+#include "game/chartfile.h"
+#include "game/songini.h"
 
 typedef enum {
     TELA_INICIO,      /* menu principal */
+    TELA_MUSICAS,     /* escolher a música */
+    TELA_DIFICULDADE, /* escolher a dificuldade */
+    TELA_CARREGANDO,  /* decodificando o áudio da música escolhida */
     TELA_CONFIG,      /* configurações */
     TELA_CONTROLES,   /* remapear botões */
     TELA_AUDIO,       /* teste de áudio: carregar e tocar a música de teste */
@@ -30,12 +35,19 @@ typedef enum {
 } TipoItem;
 
 typedef enum {
-    ID_JOGAR, ID_MUSICAS, ID_CONFIG, ID_SAIR,
-    ID_CONTROLES, ID_MODO, ID_VELOCIDADE, ID_CANHOTO, ID_FPS, ID_VOLUME, ID_CALIBRAR,
+    ID_JOGAR, ID_CONFIG, ID_SAIR,
+    ID_CONTROLES, ID_MODO, ID_VELOCIDADE, ID_PRECISAO, ID_CANHOTO, ID_FPS, ID_VOLUME, ID_CALIBRAR,
+    ID_PROCURAR,     /* lista de músicas: procurar de novo nas pastas */
     ID_VOLTAR, ID_RESTAURAR, ID_ANALOGICO,
     ID_AUDIO_TESTE, ID_AUDIO_CARREGAR, ID_AUDIO_TOCAR,
     ID_CONTINUAR, ID_REINICIAR, ID_SAIR_MENU,
-    ID_MAPEAR      /* ID_MAPEAR + Acao: remapear aquela ação */
+    ID_DEMO,         /* a música de demonstração, sem áudio */
+
+    /* faixas de ids: precisam vir DEPOIS de todos os ids fixos acima, porque o
+       executa() decide pelo intervalo (id >= ID_MAPEAR, id >= ID_DIFICULDADE...) */
+    ID_MUSICA,                              /* ID_MUSICA + i: a música i da lista */
+    ID_DIFICULDADE = ID_MUSICA + 1000,      /* ID_DIFICULDADE + d */
+    ID_MAPEAR      = ID_DIFICULDADE + 100   /* ID_MAPEAR + Acao: remapear aquela ação */
 } IdItem;
 
 typedef struct {
@@ -61,14 +73,16 @@ typedef struct {
     int  velocidade;    /* 1..10: quão rápido as notas descem */
     bool canhoto;       /* inverte a ordem das faixas */
     bool mostrar_fps;
+    bool precisao;      /* modo precisão: janela de acerto mais curta */
     int  volume;        /* 0..100 */
 } Opcoes;
 
 /* ---------------------------------------------------------------------------
  * Regras do julgamento (depois vêm do config.lua)
  * ------------------------------------------------------------------------- */
-#define GAME_JANELA_ACERTO   0.070   /* segundos para cada lado da nota */
-#define GAME_JANELA_PERFEITO 0.030   /* dentro disso, "Perfeito" */
+#define GAME_JANELA_NORMAL   0.100   /* segundos para cada lado da nota */
+#define GAME_JANELA_PRECISAO 0.070   /* modo precisão (era o padrão até a etapa 4) */
+#define GAME_PERFEITO        0.40    /* "Perfeito" = dentro de 40% da janela */
 #define GAME_SUSTAIN_FOLGA   0.100   /* soltar nos últimos 100 ms conta como completo */
 #define GAME_SP_FRASE        0.25f   /* uma frase de star power completa enche 25% */
 #define GAME_SP_MINIMO       0.50f   /* para ativar, o medidor precisa de 50% */
@@ -104,8 +118,26 @@ typedef enum {
     PEDIDO_TROCAR_ANALOGICO,
     PEDIDO_AUDIO_CARREGAR,       /* tela de áudio: decodificar a música de teste */
     PEDIDO_AUDIO_TOCAR,          /* tela de áudio: tocar / pausar */
+    PEDIDO_ABRIR_MUSICA,         /* pedido_indice = música: o main.c lê o notes.chart e chama Game_open_chart */
+    PEDIDO_CARREGAR_MUSICA,      /* pedido_indice = música: decodificar o áudio dela */
+    PEDIDO_CANCELAR_CARGA,
+    PEDIDO_PROCURAR_MUSICAS,     /* varrer as pastas de novo */
     PEDIDO_SAIR
 } Pedido;
+
+/* ---------------------------------------------------------------------------
+ * A lista de músicas: o main.c acha as pastas e lê os song.ini; o game guarda
+ * o que precisa mostrar e monta o menu.
+ * ------------------------------------------------------------------------- */
+typedef struct {
+    char titulo[64];
+    char artista[48];
+    char charter[48];
+    int  duracao_ms;
+    int  atraso_ms;
+} InfoMusica;
+
+#define GAME_PAGINA 7   /* Esq/Dir na lista de músicas pula isso */
 
 typedef struct {
     Tela    tela;
@@ -130,11 +162,14 @@ typedef struct {
     bool     pausado;
     bool     terminou;
     int      sel_pausa;        /* item selecionado na pausa / no fim */
+    double   segura_t[2];      /* há quanto tempo Cima/Baixo estão segurados (repetição) */
+    double   repete_t[2];
     uint32_t segurados;        /* ações seguradas neste frame */
     float    whammy;           /* 0..1 */
 
     /* placar */
     double   pontos;
+    double   mult_mudou_t;     /* t_total em que o multiplicador mudou (animação) */
     int      multiplicador;    /* 1..4, x2 com star power */
     int      combo, maior_combo;
     int      acertos, erros;   /* em notas (um acorde conta uma) */
@@ -146,6 +181,11 @@ typedef struct {
 
     /* para os efeitos do draw (ele anima a partir de "quando aconteceu") */
     double   acerto_t[5];      /* t do último acerto em cada faixa */
+
+    /* estatística da partida, para o log (a média do erro de tempo ajuda a
+       calibrar: média negativa = o jogador aperta adiantado) */
+    double   soma_erro, soma_erro2;
+    int      pausas;
     double   ultimo_julgamento_t;
     double   ultimo_erro_tempo;  /* erro de tempo do último acerto (s) */
     bool     ultimo_foi_erro;
@@ -158,20 +198,45 @@ typedef struct {
     const char *aviso;
     double      aviso_ate;   /* em t_total */
 
+    /* músicas */
+    InfoMusica  *musicas;                 /* cresce conforme o main.c acrescenta */
+    int          n_musicas, cap_musicas;
+    ItemMenu    *itens_musicas;           /* demonstração + músicas + procurar + voltar */
+    int          cap_itens;
+    Menu         menu_musicas;
+    int          musica;                  /* a escolhida: índice, ou -1 = demonstração */
+    ArquivoChart arquivo;                 /* o notes.chart dela, já lido */
+    bool         arquivo_ok;
+    ItemMenu     itens_dif[DIF_N + 1];
+    char         rotulos_dif[DIF_N][32];
+    Menu         menu_dif;
+    Dificuldade  dificuldade;
+
     /* saída para o main.c */
     Pedido  pedido;
     Acao    pedido_acao;
+    int     pedido_indice;
 } Game;
 
 void Game_init(Game *g);
 void Game_quit(Game *g);
 void Game_update(Game *g, const Botoes *b, double dt);
 bool Game_load_chart(Game *g, const Nota *notas, int n);   /* troca a música (testes) */
+void Game_play(Game *g);                                    /* começa a partida com o chart atual */
+
+/* músicas (chamadas pelo main.c) */
+void Game_clear_songs(Game *g);
+void Game_add_song(Game *g, const SongIni *ini, const char *nome_pasta);
+void Game_songs_done(Game *g);    /* depois de acrescentar: monta o menu */
+bool Game_open_chart(Game *g, const char *texto, size_t tamanho);   /* vai para a dificuldade */
+void Game_audio_ready(Game *g, bool ok, double duracao);            /* carga terminou: começa */
 
 /* Para o draw (e para os testes) */
 const Menu *Game_menu(const Game *g);            /* menu visível agora, ou NULL */
 int         Game_menu_sel(const Game *g);        /* item selecionado nele */
 double      Game_janela_visivel(const Game *g);  /* segundos de pista visíveis */
+double      Game_janela_acerto(const Game *g);   /* segundos para cada lado da nota */
+double      Game_janela_perfeito(const Game *g);
 
 /* menu.c */
 const Menu *Menu_da_tela(Tela t);   /* NULL para TELA_JOGO */

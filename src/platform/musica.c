@@ -1,12 +1,82 @@
 #include "platform/musica.h"
 
-#define PROFUNDIDADE_MAX 3
+#define PROFUNDIDADE_MAX 6   /* Artista/Álbum/Música/... */
 
 /* faixas que o Clone Hero toca juntas; preview.* (a prévia do menu) fica de fora */
 static const char *const FAIXAS[] = {
     "song", "guitar", "bass", "rhythm", "keys", "vocals", "vocals_1", "vocals_2",
     "drums", "drums_1", "drums_2", "drums_3", "drums_4", "crowd",
 };
+
+void Musica_path(const Musica *m, const char *arquivo, char *saida, size_t n)
+{
+    SDL_snprintf(saida, n, "%s%s", m->pasta, arquivo);
+}
+
+void Musica_free_list(Musica *musicas, int n)
+{
+    for (int i = 0; i < n; i++) SDL_free(musicas[i].ini_texto);
+    SDL_free(musicas);
+}
+
+/* ---------------------------------------------------------------------------
+ * As pastas onde procurar
+ * ------------------------------------------------------------------------- */
+static void com_barra(char *destino, size_t n, const char *pasta)
+{
+    const size_t t = SDL_strlen(pasta);
+    SDL_snprintf(destino, n, "%s%s", pasta, (t && pasta[t - 1] == '/') ? "" : "/");
+}
+
+static const char EXEMPLO_PASTAS[] =
+    "# Ark Hero - pastas de musicas, uma por linha.\n"
+    "# Alem destas, o jogo sempre procura em songs/ (dentro da pasta do jogo)\n"
+    "# e em assets/musics/. Linhas com # sao ignoradas. Exemplo:\n"
+    "# /roms/ports/clonehero/songs\n";
+
+int Musica_roots(char raizes[][512], int max)
+{
+    int n = 0;
+    const char *base = SDL_GetBasePath();
+    if (n < max) SDL_snprintf(raizes[n++], 512, "%ssongs/", base ? base : "");
+    if (n < max) SDL_snprintf(raizes[n++], 512, "%sassets/musics/", base ? base : "");
+
+    char *pref = SDL_GetPrefPath("", "arkhero");
+    if (!pref) return n;
+    char arquivo[512];
+    SDL_snprintf(arquivo, sizeof(arquivo), "%spastas.txt", pref);
+    SDL_free(pref);
+
+    size_t tam = 0;
+    char *texto = SDL_LoadFile(arquivo, &tam);
+    if (!texto) {   /* primeira vez: cria o arquivo com o exemplo, para o jogador achar */
+        SDL_SaveFile(arquivo, EXEMPLO_PASTAS, sizeof(EXEMPLO_PASTAS) - 1);
+        SDL_Log("[musica] criei %s (para acrescentar pastas de musica)", arquivo);
+        return n;
+    }
+    char *fim = NULL;
+    for (char *linha = SDL_strtok_r(texto, "\r\n", &fim); linha && n < max;
+         linha = SDL_strtok_r(NULL, "\r\n", &fim)) {
+        while (*linha == ' ' || *linha == '\t') linha++;
+        size_t t = SDL_strlen(linha);
+        while (t && (linha[t - 1] == ' ' || linha[t - 1] == '\t')) linha[--t] = '\0';
+        if (t == 0 || linha[0] == '#') continue;
+        com_barra(raizes[n++], 512, linha);
+    }
+    SDL_free(texto);
+    return n;
+}
+
+/* ---------------------------------------------------------------------------
+ * Uma pasta: é uma música, ou tem subpastas para olhar
+ * ------------------------------------------------------------------------- */
+typedef struct {
+    Musica atual;          /* o que esta pasta tem */
+    bool   tem_mid, tem_ini;
+    char   ini[32];
+    char (*subpastas)[96]; /* nomes das subpastas */
+    int    n_sub, cap_sub;
+} Pasta;
 
 static bool e_faixa(const char *base)
 {
@@ -15,97 +85,171 @@ static bool e_faixa(const char *base)
     return false;
 }
 
-/* separa "Guitar.OGG" em base "Guitar" e extensão "OGG" */
-static bool separa(const char *arquivo, char *base, size_t n, const char **ext)
+static SDL_EnumerationResult SDLCALL item_da_pasta(void *dado, const char *dir, const char *nome)
 {
-    const char *ponto = SDL_strrchr(arquivo, '.');
-    if (!ponto || ponto == arquivo) return false;
-    const size_t tam = (size_t)(ponto - arquivo);
-    if (tam >= n) return false;
-    SDL_memcpy(base, arquivo, tam);
-    base[tam] = '\0';
-    *ext = ponto + 1;
-    return true;
-}
+    Pasta *p = dado;
+    if (nome[0] == '.') return SDL_ENUM_CONTINUE;   /* ocultos, "." e ".." */
 
-static SDL_EnumerationResult SDLCALL arquivo_da_pasta(void *dado, const char *pasta, const char *nome)
-{
-    Musica *m = dado;
-    char base[64];
-    const char *ext;
+    char caminho[512];
+    SDL_snprintf(caminho, sizeof(caminho), "%s%s", dir, nome);
+    SDL_PathInfo info;
+    if (!SDL_GetPathInfo(caminho, &info)) return SDL_ENUM_CONTINUE;
 
-    /* comparação sem maiúsculas: song.ini pode dizer Song.ogg e o arquivo ser song.ogg */
+    if (info.type == SDL_PATHTYPE_DIRECTORY) {
+        if (p->n_sub >= p->cap_sub) {
+            const int cap = p->cap_sub ? p->cap_sub * 2 : 16;
+            void *novo = SDL_realloc(p->subpastas, sizeof(*p->subpastas) * (size_t)cap);
+            if (!novo) return SDL_ENUM_CONTINUE;
+            p->subpastas = novo;
+            p->cap_sub   = cap;
+        }
+        SDL_strlcpy(p->subpastas[p->n_sub++], nome, sizeof(p->subpastas[0]));
+        return SDL_ENUM_CONTINUE;
+    }
+    if (info.type != SDL_PATHTYPE_FILE || SDL_strlen(nome) >= 32) return SDL_ENUM_CONTINUE;
+
+    /* sem diferenciar maiúsculas: song.ini pode dizer Song.ogg e o arquivo ser song.ogg */
+    Musica *m = &p->atual;
+    const char *ponto = SDL_strrchr(nome, '.');
     if (SDL_strcasecmp(nome, "notes.chart") == 0) {
-        SDL_snprintf(m->chart, sizeof(m->chart), "%s%s", pasta, nome);
+        SDL_strlcpy(m->chart, nome, sizeof(m->chart));
+    } else if (SDL_strcasecmp(nome, "notes.mid") == 0) {
+        p->tem_mid = true;
     } else if (SDL_strcasecmp(nome, "song.ini") == 0) {
-        SDL_snprintf(m->ini, sizeof(m->ini), "%s%s", pasta, nome);
-    } else if (separa(nome, base, sizeof(base), &ext) && e_faixa(base)) {
-        if (SDL_strcasecmp(ext, "ogg") == 0 || SDL_strcasecmp(ext, "opus") == 0 ||
-            SDL_strcasecmp(ext, "wav") == 0) {
-            if (m->n_faixas < CARREGADOR_MAX_FAIXAS)
-                SDL_snprintf(m->faixas[m->n_faixas++], sizeof(m->faixas[0]), "%s%s", pasta, nome);
-        } else if (SDL_strcasecmp(ext, "mp3") == 0) {
-            m->ignoradas++;   /* MP3 entra depois */
+        p->tem_ini = true;
+        SDL_strlcpy(p->ini, nome, sizeof(p->ini));
+    } else if (ponto) {
+        char base[32];
+        SDL_strlcpy(base, nome, (size_t)(ponto - nome) + 1 < sizeof(base) ? (size_t)(ponto - nome) + 1 : sizeof(base));
+        const char *ext = ponto + 1;
+        if (e_faixa(base)) {
+            if (SDL_strcasecmp(ext, "ogg") == 0 || SDL_strcasecmp(ext, "opus") == 0 ||
+                SDL_strcasecmp(ext, "wav") == 0) {
+                if (m->n_faixas < CARREGADOR_MAX_FAIXAS)
+                    SDL_strlcpy(m->faixas[m->n_faixas++], nome, sizeof(m->faixas[0]));
+            } else if (SDL_strcasecmp(ext, "mp3") == 0) {
+                m->ignoradas++;   /* MP3 entra depois */
+            }
         }
     }
     return SDL_ENUM_CONTINUE;
 }
 
-bool Musica_open(const char *pasta, Musica *m)
+static void acrescenta(Varredura *v, const Musica *m)
 {
-    *m = (Musica){0};
-    const size_t n = SDL_strlen(pasta);
-    SDL_snprintf(m->pasta, sizeof(m->pasta), "%s%s", pasta, (n && pasta[n - 1] == '/') ? "" : "/");
+    if (v->n >= v->cap) {
+        const int cap = v->cap ? v->cap * 2 : 64;
+        Musica *novo = SDL_realloc(v->musicas, sizeof(Musica) * (size_t)cap);
+        if (!novo) return;
+        v->musicas = novo;
+        v->cap     = cap;
+    }
+    v->musicas[v->n++] = *m;
+    SDL_SetAtomicInt(&v->achadas, v->n);
+}
 
-    /* nome = último trecho do caminho */
-    char tmp[512];
-    SDL_strlcpy(tmp, m->pasta, sizeof(tmp));
-    tmp[SDL_strlen(tmp) - 1] = '\0';
-    const char *barra = SDL_strrchr(tmp, '/');
-    SDL_strlcpy(m->nome, barra ? barra + 1 : tmp, sizeof(m->nome));
+static void varre(Varredura *v, const char *pasta, int nivel)
+{
+    if (SDL_GetAtomicInt(&v->cancelar)) return;
 
-    if (!SDL_EnumerateDirectory(m->pasta, arquivo_da_pasta, m)) return false;
-    return m->chart[0] != '\0' && m->n_faixas > 0;
+    Pasta p;
+    SDL_zero(p);
+    com_barra(p.atual.pasta, sizeof(p.atual.pasta), pasta);
+    if (!SDL_EnumerateDirectory(p.atual.pasta, item_da_pasta, &p)) return;
+    v->pastas++;
+
+    if (p.atual.chart[0] && p.atual.n_faixas > 0) {   /* é uma música */
+        char tmp[512];
+        SDL_strlcpy(tmp, p.atual.pasta, sizeof(tmp));
+        tmp[SDL_strlen(tmp) - 1] = '\0';
+        const char *barra = SDL_strrchr(tmp, '/');
+        SDL_strlcpy(p.atual.nome, barra ? barra + 1 : tmp, sizeof(p.atual.nome));
+        if (p.tem_ini) {
+            char caminho[600];
+            Musica_path(&p.atual, p.ini, caminho, sizeof(caminho));
+            p.atual.ini_texto = SDL_LoadFile(caminho, &p.atual.ini_tam);
+        }
+        acrescenta(v, &p.atual);
+    } else {
+        if (p.atual.chart[0]) v->sem_audio++;
+        else if (p.tem_mid)   v->so_mid++;
+        if (nivel < PROFUNDIDADE_MAX) {
+            for (int i = 0; i < p.n_sub; i++) {
+                char sub[600];
+                SDL_snprintf(sub, sizeof(sub), "%s%s", p.atual.pasta, p.subpastas[i]);
+                varre(v, sub, nivel + 1);
+            }
+        }
+    }
+    SDL_free(p.subpastas);
+}
+
+static int SDLCALL trabalha(void *dado)
+{
+    Varredura *v = dado;
+    const Uint64 inicio = SDL_GetTicksNS();
+    for (int i = 0; i < v->n_raizes; i++) varre(v, v->raizes[i], 0);
+    v->segundos = (double)(SDL_GetTicksNS() - inicio) / 1e9;
+    SDL_SetAtomicInt(&v->estado, VARRE_PRONTO);   /* por último: daqui em diante o main lê */
+    return 0;
 }
 
 /* ---------------------------------------------------------------------------
- * Varredura (por enquanto simples; a biblioteca com cache vem depois)
+ * Interface
  * ------------------------------------------------------------------------- */
-typedef struct {
-    Musica *saida;
-    int     max, n, nivel;
-} Busca;
-
-static void busca_em(Busca *b, const char *pasta);
-
-static SDL_EnumerationResult SDLCALL entrada(void *dado, const char *pasta, const char *nome)
+bool Varredura_start(Varredura *v)
 {
-    Busca *b = dado;
-    if (b->n >= b->max) return SDL_ENUM_SUCCESS;
+    if (Varredura_state(v) == VARRE_ANDANDO) return false;
+    Varredura_quit(v);
 
-    char caminho[512];
-    SDL_snprintf(caminho, sizeof(caminho), "%s%s", pasta, nome);
-    SDL_PathInfo info;
-    if (!SDL_GetPathInfo(caminho, &info) || info.type != SDL_PATHTYPE_DIRECTORY) return SDL_ENUM_CONTINUE;
+    v->n_raizes = Musica_roots(v->raizes, MUSICA_MAX_RAIZES);
+    v->musicas  = NULL;
+    v->n = v->cap = v->pastas = v->so_mid = v->sem_audio = 0;
+    v->segundos = 0.0;
+    SDL_SetAtomicInt(&v->achadas, 0);
+    SDL_SetAtomicInt(&v->cancelar, 0);
+    SDL_SetAtomicInt(&v->estado, VARRE_ANDANDO);
+    for (int i = 0; i < v->n_raizes; i++) SDL_Log("[musica] procurando em %s", v->raizes[i]);
 
-    if (Musica_open(caminho, &b->saida[b->n])) b->n++;
-    else if (b->nivel < PROFUNDIDADE_MAX) busca_em(b, caminho);   /* pasta de grupo: desce */
-    return SDL_ENUM_CONTINUE;
+    v->thread = SDL_CreateThread(trabalha, "arkhero-varredura", v);
+    if (!v->thread) {
+        SDL_Log("[musica] nao criei a thread de varredura: %s", SDL_GetError());
+        SDL_SetAtomicInt(&v->estado, VARRE_PARADO);
+        return false;
+    }
+    return true;
 }
 
-static void busca_em(Busca *b, const char *pasta)
+EstadoVarredura Varredura_state(const Varredura *v)
 {
-    char com_barra[512];
-    const size_t n = SDL_strlen(pasta);
-    SDL_snprintf(com_barra, sizeof(com_barra), "%s%s", pasta, (n && pasta[n - 1] == '/') ? "" : "/");
-    b->nivel++;
-    SDL_EnumerateDirectory(com_barra, entrada, b);
-    b->nivel--;
+    return (EstadoVarredura)SDL_GetAtomicInt((SDL_AtomicInt *)&v->estado);
 }
 
-int Musica_list(const char *raiz, Musica *saida, int max)
+int Varredura_found(const Varredura *v)
 {
-    Busca b = { saida, max, 0, 0 };
-    busca_em(&b, raiz);
-    return b.n;
+    return SDL_GetAtomicInt((SDL_AtomicInt *)&v->achadas);
+}
+
+bool Varredura_take(Varredura *v, Musica **musicas, int *n)
+{
+    if (Varredura_state(v) != VARRE_PRONTO) return false;
+    if (v->thread) SDL_WaitThread(v->thread, NULL);
+    v->thread = NULL;
+    *musicas  = v->musicas;
+    *n        = v->n;
+    v->musicas = NULL;
+    v->n = v->cap = 0;
+    SDL_SetAtomicInt(&v->estado, VARRE_PARADO);
+    return true;
+}
+
+void Varredura_quit(Varredura *v)
+{
+    SDL_SetAtomicInt(&v->cancelar, 1);
+    if (v->thread) SDL_WaitThread(v->thread, NULL);
+    v->thread = NULL;
+    Musica_free_list(v->musicas, v->n);
+    v->musicas = NULL;
+    v->n = v->cap = 0;
+    SDL_SetAtomicInt(&v->estado, VARRE_PARADO);
 }

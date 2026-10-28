@@ -53,6 +53,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(ARKHERO_GAME_SRC
     src/game/acao.c
     src/game/chart.c
+    src/game/chartfile.c
     src/game/game.c
     src/game/judge.c
     src/game/menu.c
@@ -78,7 +79,8 @@ target_include_directories(arkhero PRIVATE src)
 target_link_libraries(arkhero PRIVATE SDL3::SDL3)
 if(ARKHERO_AUDIO_STATIC)
     # --static: o pkg-config lista tambem as dependencias (ogg, opus, libm)
-    target_include_directories(arkhero PRIVATE ${AUDIO_STATIC_INCLUDE_DIRS})
+    # SYSTEM: avisos dentro dos headers de terceiros (vorbisfile.h) nao sao nossos
+    target_include_directories(arkhero SYSTEM PRIVATE ${AUDIO_STATIC_INCLUDE_DIRS})
     target_link_libraries(arkhero PRIVATE ${AUDIO_STATIC_LDFLAGS})
 else()
     target_link_libraries(arkhero PRIVATE PkgConfig::AUDIO)

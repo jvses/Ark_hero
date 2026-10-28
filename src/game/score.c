@@ -30,7 +30,10 @@ void Score_apply_events(Game *g)
         const int mult = Score_multiplicador(g);
         switch (e->tipo) {
         case EV_ACERTO:
-            g->pontos += PONTOS_POR_NOTA * botoes_na_nota(g->chart.notas[e->nota].mascara) * mult;
+        {
+            const int b = botoes_na_nota(g->chart.notas[e->nota].mascara);
+            g->pontos += PONTOS_POR_NOTA * (b > 0 ? b : 1) * mult;   /* a aberta vale como uma */
+        }
             break;
         case EV_SUSTAIN:
             g->pontos += PONTOS_SUSTAIN_POR_SEG * e->valor * mult;
@@ -39,5 +42,7 @@ void Score_apply_events(Game *g)
             break;
         }
     }
-    g->multiplicador = Score_multiplicador(g);
+    const int novo = Score_multiplicador(g);
+    if (novo != g->multiplicador) g->mult_mudou_t = g->t_total;   /* o draw anima a troca */
+    g->multiplicador = novo;
 }

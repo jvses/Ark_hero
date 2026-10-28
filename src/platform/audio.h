@@ -36,6 +36,7 @@ typedef struct {
     double     t_suave;
     Uint64     ultimo_ns;
     bool       suave_ok;
+    int        saltos;     /* vezes que o relógio suave teve de pular (travada ou dispositivo irregular) */
     float      volume;
 } Audio;
 

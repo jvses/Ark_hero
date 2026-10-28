@@ -241,6 +241,7 @@ void Input_reset_defaults(Input *inp)
 static void aperto_pad(Input *inp, int fisico)
 {
     SDL_snprintf(inp->ultimo, sizeof(inp->ultimo), "%s [%s]", rotulo_pad(fisico), nome_pad(fisico));
+    if (inp->log_apertos) SDL_Log("[input] %llu ms: controle %s", (unsigned long long)SDL_GetTicks(), inp->ultimo);
 
     if (inp->capturando >= 0) {
         atribui_pad(inp, inp->capturando, fisico);
@@ -256,6 +257,7 @@ static void aperto_pad(Input *inp, int fisico)
 static void aperto_tecla(Input *inp, SDL_Scancode tecla)
 {
     SDL_snprintf(inp->ultimo, sizeof(inp->ultimo), "tecla %s", nome_tecla(tecla));
+    if (inp->log_apertos) SDL_Log("[input] %llu ms: %s", (unsigned long long)SDL_GetTicks(), inp->ultimo);
 
     if (inp->capturando >= 0) {
         if (tecla != SDL_SCANCODE_ESCAPE) {           /* Esc cancela a captura */
@@ -300,7 +302,13 @@ void Input_event(Input *inp, const SDL_Event *ev)
             inp->gamepad = SDL_OpenGamepad(ev->gdevice.which);
             if (inp->gamepad) {
                 inp->which = ev->gdevice.which;
-                SDL_Log("[input] controle: %s", SDL_GetGamepadName(inp->gamepad));
+                /* o mapeamento diz qual botão físico a SDL chama de a/b/x/y:
+                   é a resposta para "o botão de baixo é o A ou o B?" */
+                char *mapa = SDL_GetGamepadMapping(inp->gamepad);
+                SDL_Log("[input] controle: %s (tipo %s)", SDL_GetGamepadName(inp->gamepad),
+                        SDL_GetGamepadStringForType(SDL_GetGamepadType(inp->gamepad)));
+                SDL_Log("[input] mapeamento SDL: %s", mapa ? mapa : "(nenhum)");
+                SDL_free(mapa);
             }
         }
         break;
@@ -423,6 +431,19 @@ bool Input_init(Input *inp)
     } else {
         SDL_Log("[input] sem pasta para salvar os controles: %s", SDL_GetError());
     }
+
+    /* o mapeamento em uso, de uma vez, para conferir no log.txt */
+    char linha[512] = "";
+    for (int a = 0; a < ACAO_N_REMAPEAVEIS; a++) {
+        char item[48];
+        SDL_snprintf(item, sizeof(item), "%s=%s/%s ", Acao_id((Acao)a), nome_pad(inp->mapa[a].pad),
+                     nome_tecla(inp->mapa[a].tecla));
+        SDL_strlcat(linha, item, sizeof(linha));
+    }
+    SDL_Log("[input] controles: %s analogico=%s", linha, Input_stick_label(inp));
+
+    const char *log_apertos = SDL_getenv("ARKHERO_LOG_INPUT");
+    inp->log_apertos = log_apertos && SDL_strcmp(log_apertos, "1") == 0;
     return true;
 }
 

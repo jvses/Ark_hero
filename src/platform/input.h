@@ -45,6 +45,7 @@ typedef struct {
 
     char           ultimo[48];        /* último botão apertado, para conferir na tela */
     char           arquivo[512];      /* caminho do controles.cfg ("" = não salva) */
+    bool           log_apertos;       /* ARKHERO_LOG_INPUT=1: cada aperto vai para o log */
 } Input;
 
 bool   Input_init(Input *inp);

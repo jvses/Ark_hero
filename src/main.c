@@ -1,8 +1,8 @@
 /* Ark Hero: o ponto de encontro dos módulos.
  *
  * Só este arquivo conhece o App inteiro. Cada módulo recebe só o pedaço que é
- * dele, e é aqui que a plataforma (video, input, audio) e o jogo (game, draw)
- * se ligam.
+ * dele, e é aqui que a plataforma (video, input, audio, arquivos) e o jogo
+ * (game, draw) se ligam.
  *
  * Um frame (SDL_AppIterate), sempre nesta ordem:
  *   1. tempo   2. entrada   3. som e relógio   4. lógica   5. pedidos   6. desenho */
@@ -29,70 +29,192 @@ typedef struct {
     Draw   draw;
     Game   game;
 
+    /* as músicas encontradas, na mesma ordem de game.musicas */
+    Musica   *musicas;
+    int       n_musicas;
+    Varredura varredura;          /* procura as pastas numa thread */
+
+    /* o que o log registra de cada partida */
+    bool   logando;
+    int    partida_logada;
+    int    frames_lentos;         /* frames com mais de 25 ms durante a partida */
+
     /* som */
     OQueToca   tocando;
     int        partida_tocando;   /* g->partida que está tocando (para saber quando recomeçar) */
-    Pcm        cliques;           /* metrônomo da partida, gerado a partir das batidas do chart */
-    Carregador carga;             /* decodifica a música de teste numa thread */
-    Pcm        musica_teste;
-    Musica     teste;             /* a primeira música encontrada */
-    bool       tem_teste;
-    char       pasta_teste[512];
-    char       info_musica[160], info_faixas[256], info_carga[160];
+    Pcm        cliques;           /* metrônomo, para a demonstração (ou se o áudio falhar) */
+    Carregador carga;             /* decodifica uma música numa thread */
+    int        carga_indice;      /* qual música está sendo decodificada */
+    Pcm        pcm;               /* a última música decodificada */
+    int        pcm_indice;        /* qual é (-1 = nenhuma) */
+
+    /* textos da tela de teste de áudio (ela usa a primeira música) */
+    char info_musica[160], info_faixas[256], info_carga[160];
 
     Uint64 ultimo_ns;
     bool   sair;
 } App;
 
 /* ---------------------------------------------------------------------------
- * Música de teste: a primeira pasta de música em songs/ (no console, a pasta
- * do jogo) ou assets/musics/ (no PC, ao lado do repositório).
+ * Músicas. A thread da varredura acha as pastas e lê os song.ini; aqui o
+ * texto é interpretado (SongIni_parse, do game), a lista é ordenada pelo
+ * título e entregue ao game.
  * ------------------------------------------------------------------------- */
-static void procura_musica_teste(App *app)
+typedef struct {
+    int     i;
+    SongIni ini;
+} Ordem;
+
+static int compara_titulo(const void *x, const void *y)
 {
-    const char *raizes[] = { "songs/", "assets/musics/" };
-    for (size_t i = 0; i < SDL_arraysize(raizes) && !app->tem_teste; i++) {
-        SDL_snprintf(app->pasta_teste, sizeof(app->pasta_teste), "%s%s", SDL_GetBasePath(), raizes[i]);
-        app->tem_teste = Musica_list(app->pasta_teste, &app->teste, 1) == 1;
-    }
-    if (!app->tem_teste) {
-        SDL_snprintf(app->pasta_teste, sizeof(app->pasta_teste), "%ssongs/", SDL_GetBasePath());
-        SDL_Log("[musica] nenhuma musica de teste (procurei em songs/ e assets/musics/)");
-        return;
-    }
+    const Ordem *a = x, *b = y;
+    const int c = SDL_strcasecmp(a->ini.nome, b->ini.nome);
+    return c ? c : SDL_strcasecmp(a->ini.artista, b->ini.artista);
+}
 
-    /* nome e artista vêm do song.ini; ler o arquivo é da plataforma, entender é do game */
-    SongIni ini = {0};
-    size_t tam = 0;
-    char *texto = app->teste.ini[0] ? SDL_LoadFile(app->teste.ini, &tam) : NULL;
-    if (texto) {
-        SongIni_parse(texto, tam, &ini);
-        SDL_free(texto);
-    }
-    if (ini.nome[0]) SDL_snprintf(app->info_musica, sizeof(app->info_musica), "%s - %s", ini.nome, ini.artista);
-    else             SDL_strlcpy(app->info_musica, app->teste.nome, sizeof(app->info_musica));
-
-    app->info_faixas[0] = '\0';
-    for (int i = 0; i < app->teste.n_faixas; i++) {
-        const char *barra = SDL_strrchr(app->teste.faixas[i], '/');
-        SDL_strlcat(app->info_faixas, barra ? barra + 1 : app->teste.faixas[i], sizeof(app->info_faixas));
+static void textos_do_teste(App *app)
+{
+    app->info_musica[0] = app->info_faixas[0] = '\0';
+    if (app->n_musicas == 0) return;
+    const InfoMusica *info = &app->game.musicas[0];
+    if (info->artista[0]) SDL_snprintf(app->info_musica, sizeof(app->info_musica), "%s - %s", info->titulo, info->artista);
+    else                  SDL_strlcpy(app->info_musica, info->titulo, sizeof(app->info_musica));
+    for (int i = 0; i < app->musicas[0].n_faixas; i++) {
+        SDL_strlcat(app->info_faixas, app->musicas[0].faixas[i], sizeof(app->info_faixas));
         SDL_strlcat(app->info_faixas, "  ", sizeof(app->info_faixas));
     }
-    SDL_Log("[musica] teste: %s (%d faixas)", app->info_musica, app->teste.n_faixas);
+}
+
+static int acha_pasta(const Musica *lista, int n, const char *pasta)
+{
+    for (int i = 0; i < n; i++)
+        if (SDL_strcmp(lista[i].pasta, pasta) == 0) return i;
+    return -1;
+}
+
+/* a varredura terminou: troca a lista. Só quando é seguro (fora da partida,
+ * da escolha de dificuldade e de uma carga), porque os índices mudam. */
+static void aplica_varredura(App *app)
+{
+    Game *g = &app->game;
+    if (Varredura_state(&app->varredura) != VARRE_PRONTO) return;
+    if (g->tela == TELA_DIFICULDADE || g->tela == TELA_CARREGANDO || g->tela == TELA_JOGO) return;
+    if (Carregador_state(&app->carga) == CARGA_ANDANDO) return;
+
+    const Varredura *v = &app->varredura;
+    const int pastas = v->pastas, so_mid = v->so_mid, sem_audio = v->sem_audio;
+    const double seg = v->segundos;
+    Musica *nova = NULL;
+    int n = 0;
+    Varredura_take(&app->varredura, &nova, &n);
+
+    /* interpreta os song.ini e ordena pelo título */
+    Ordem *ordem = SDL_malloc(sizeof(Ordem) * (size_t)(n > 0 ? n : 1));
+    Musica *ordenada = SDL_malloc(sizeof(Musica) * (size_t)(n > 0 ? n : 1));
+    if (!ordem || !ordenada) {
+        SDL_free(ordem); SDL_free(ordenada);
+        Musica_free_list(nova, n);
+        SDL_Log("[musica] sem memoria para a lista de musicas");
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        ordem[i].i = i;
+        if (!nova[i].ini_texto || !SongIni_parse(nova[i].ini_texto, nova[i].ini_tam, &ordem[i].ini))
+            ordem[i].ini = (SongIni){0};
+        if (!ordem[i].ini.nome[0]) SDL_strlcpy(ordem[i].ini.nome, nova[i].nome, sizeof(ordem[i].ini.nome));
+        SDL_free(nova[i].ini_texto);   /* já foi interpretado: libera a memória */
+        nova[i].ini_texto = NULL;
+    }
+    SDL_qsort(ordem, (size_t)n, sizeof(Ordem), compara_titulo);
+    for (int i = 0; i < n; i++) ordenada[i] = nova[ordem[i].i];
+    SDL_free(nova);
+
+    /* a música decodificada e a selecionada continuam valendo, nas posições novas */
+    char pcm_pasta[512] = "", sel_pasta[512] = "";
+    if (app->pcm_indice >= 0 && app->pcm_indice < app->n_musicas)
+        SDL_strlcpy(pcm_pasta, app->musicas[app->pcm_indice].pasta, sizeof(pcm_pasta));
+    const int sel = g->sel[TELA_MUSICAS] - 1;   /* o item 0 é a demonstração */
+    if (sel >= 0 && sel < app->n_musicas) SDL_strlcpy(sel_pasta, app->musicas[sel].pasta, sizeof(sel_pasta));
+
+    Musica_free_list(app->musicas, app->n_musicas);
+    app->musicas    = ordenada;
+    app->n_musicas  = n;
+    app->pcm_indice = pcm_pasta[0] ? acha_pasta(ordenada, n, pcm_pasta) : -1;
+    if (app->pcm_indice < 0) Pcm_free(&app->pcm);
+
+    Game_clear_songs(g);
+    for (int i = 0; i < n; i++) Game_add_song(g, &ordem[i].ini, ordenada[i].nome);
+    Game_songs_done(g);
+    g->musica = -1;
+    if (sel_pasta[0]) {
+        const int novo = acha_pasta(ordenada, n, sel_pasta);
+        if (novo >= 0) g->sel[TELA_MUSICAS] = novo + 1;
+    }
+    SDL_free(ordem);
+    textos_do_teste(app);
+
+    SDL_Log("[musica] %d musica(s) em %.2f s (%d pastas olhadas; %d so com notes.mid, ainda nao suportado; "
+            "%d com chart mas sem audio suportado)", n, seg, pastas, so_mid, sem_audio);
+}
+
+/* o jogo escolheu uma música: ler o notes.chart e entregar o texto a ele */
+static void abre_musica(App *app, int i)
+{
+    if (i < 0 || i >= app->n_musicas) return;
+    char caminho[600];
+    Musica_path(&app->musicas[i], app->musicas[i].chart, caminho, sizeof(caminho));
+    size_t tam = 0;
+    char *texto = SDL_LoadFile(caminho, &tam);
+    if (!texto) {
+        SDL_Log("[musica] nao li %s: %s", caminho, SDL_GetError());
+        return;
+    }
+    const Uint64 inicio = SDL_GetTicksNS();
+    const bool ok = Game_open_chart(&app->game, texto, tam);
+    SDL_free(texto);
+    if (!ok) {
+        SDL_Log("[musica] %s: chart invalido", app->musicas[i].nome);
+        return;
+    }
+    const ArquivoChart *a = &app->game.arquivo;
+    SDL_Log("[musica] %s: chart lido em %.1f ms (resolucao %d, %d mudancas de andamento, offset %.3f s) "
+            "notas: facil %d, medio %d, dificil %d, expert %d", app->musicas[i].nome,
+            (double)(SDL_GetTicksNS() - inicio) / 1e6, a->resolucao, a->n_tempos, a->offset,
+            ChartFile_contar(a, DIF_FACIL), ChartFile_contar(a, DIF_MEDIO),
+            ChartFile_contar(a, DIF_DIFICIL), ChartFile_contar(a, DIF_EXPERT));
+}
+
+static void comeca_carga(App *app, int i)
+{
+    if (i < 0 || i >= app->n_musicas) return;
+    Carregador_quit(&app->carga);   /* se outra estava carregando, cancela */
+    app->carga_indice  = i;
+    app->info_carga[0] = '\0';
+
+    const Musica *m = &app->musicas[i];
+    char arquivos[CARREGADOR_MAX_FAIXAS][512];
+    for (int k = 0; k < m->n_faixas; k++) Musica_path(m, m->faixas[k], arquivos[k], sizeof(arquivos[k]));
+    SDL_Log("[carga] %s: %d faixa(s)%s", m->nome, m->n_faixas, m->ignoradas ? " (mp3 ignorado)" : "");
+    Carregador_start(&app->carga, (const char (*)[512])arquivos, m->n_faixas);
 }
 
 /* ---------------------------------------------------------------------------
- * Som da partida: por enquanto um metrônomo nas batidas do chart. Com ele dá
- * para ouvir se as notas e as linhas de batida estão no tempo do som.
+ * Som
  * ------------------------------------------------------------------------- */
-static void comeca_cliques(App *app)
+static void para_som(App *app)
+{
+    Audio_stop(&app->audio);
+    app->tocando = SOM_NADA;
+}
+
+/* metrônomo nas batidas do chart */
+static void gera_cliques(App *app)
 {
     const Chart *c = &app->game.chart;
-    Audio_stop(&app->audio);
     Pcm_free(&app->cliques);
-
-    double *tempo = SDL_malloc(sizeof(double) * (size_t)(c->n_batidas > 0 ? c->n_batidas : 1));
-    bool   *forte = SDL_malloc(sizeof(bool) * (size_t)(c->n_batidas > 0 ? c->n_batidas : 1));
+    const int n = c->n_batidas > 0 ? c->n_batidas : 1;
+    double *tempo = SDL_malloc(sizeof(double) * (size_t)n);
+    bool   *forte = SDL_malloc(sizeof(bool) * (size_t)n);
     if (tempo && forte) {
         for (int i = 0; i < c->n_batidas; i++) {
             tempo[i] = c->batidas[i].t;
@@ -102,10 +224,45 @@ static void comeca_cliques(App *app)
     }
     SDL_free(tempo);
     SDL_free(forte);
+}
 
-    Audio_play(&app->audio, &app->cliques, 0.0);
+/* começo da partida: a música, se ela foi decodificada; senão, o metrônomo.
+ * O silêncio antes (-chart.inicio) é o tempo de preparação: a pista já anda. */
+static void comeca_som_partida(App *app)
+{
+    const Game *g = &app->game;
+    Audio_stop(&app->audio);
+    const double preparacao = -g->chart.inicio;
+    if (g->musica >= 0 && g->musica == app->pcm_indice && g->chart.duracao_audio > 0.0) {
+        Audio_play(&app->audio, &app->pcm, preparacao);
+    } else {
+        gera_cliques(app);
+        Audio_play(&app->audio, &app->cliques, preparacao);
+    }
     app->tocando         = SOM_PARTIDA;
-    app->partida_tocando = app->game.partida;
+    app->partida_tocando = g->partida;
+}
+
+/* a carga em andamento terminou? */
+static void confere_carga(App *app)
+{
+    const EstadoCarga e = Carregador_state(&app->carga);
+    if (e == CARGA_PRONTO) {
+        if (app->tocando == SOM_TESTE) para_som(app);   /* o Pcm antigo vai ser liberado */
+        Pcm_free(&app->pcm);
+        const double seg = app->carga.segundos, audio = app->carga.segundos_audio;
+        Carregador_take(&app->carga, &app->pcm);
+        app->pcm_indice = app->carga_indice;
+        SDL_snprintf(app->info_carga, sizeof(app->info_carga),
+                     "Carregada: %.1f s de musica em %.2f s (%.0fx o tempo real)",
+                     (double)app->pcm.frames / AUDIO_TAXA, seg, seg > 0 ? audio / seg : 0.0);
+        SDL_Log("[carga] pronta: %.1f s de musica, %.1f MB na memoria", (double)app->pcm.frames / AUDIO_TAXA,
+                (double)app->pcm.frames * AUDIO_CANAIS * sizeof(Sint16) / (1024.0 * 1024.0));
+        Game_audio_ready(&app->game, true, (double)app->pcm.frames / AUDIO_TAXA);
+    } else if (e == CARGA_ERRO) {
+        SDL_snprintf(app->info_carga, sizeof(app->info_carga), "Erro: %s", app->carga.erro);
+        Game_audio_ready(&app->game, false, 0.0);   /* só faz algo se estiver esperando */
+    }
 }
 
 /* O que deve estar tocando sai do estado do jogo (e não de eventos soltos):
@@ -114,31 +271,16 @@ static void sincroniza_som(App *app)
 {
     const Game *g = &app->game;
     Audio_set_volume(&app->audio, g->opcoes.volume / 100.0f);
+    confere_carga(app);
 
     const bool na_partida = g->tela == TELA_JOGO && !g->terminou;
     if (na_partida) {
-        if (app->tocando != SOM_PARTIDA || app->partida_tocando != g->partida) comeca_cliques(app);
+        if (app->tocando != SOM_PARTIDA || app->partida_tocando != g->partida) comeca_som_partida(app);
         Audio_pause(&app->audio, g->pausado);
     } else if (app->tocando == SOM_PARTIDA) {
-        Audio_stop(&app->audio);
-        app->tocando = SOM_NADA;
+        para_som(app);
     }
-    if (app->tocando == SOM_TESTE && g->tela != TELA_AUDIO) {
-        Audio_stop(&app->audio);
-        app->tocando = SOM_NADA;
-    }
-
-    /* a carga da música de teste terminou? */
-    const EstadoCarga e = Carregador_state(&app->carga);
-    if (e == CARGA_PRONTO) {
-        const double seg = app->carga.segundos, audio = app->carga.segundos_audio;
-        Carregador_take(&app->carga, &app->musica_teste);
-        SDL_snprintf(app->info_carga, sizeof(app->info_carga),
-                     "Carregada: %.1f s de musica em %.2f s (%.0fx o tempo real)",
-                     (double)app->musica_teste.frames / AUDIO_TAXA, seg, seg > 0 ? audio / seg : 0.0);
-    } else if (e == CARGA_ERRO) {
-        SDL_snprintf(app->info_carga, sizeof(app->info_carga), "Erro: %s", app->carga.erro);
-    }
+    if (app->tocando == SOM_TESTE && g->tela != TELA_AUDIO) para_som(app);
 
     Audio_update(&app->audio);
 }
@@ -148,26 +290,37 @@ static void sincroniza_som(App *app)
  * ------------------------------------------------------------------------- */
 static void atende_pedido(App *app)
 {
+    const int i = app->game.pedido_indice;
     switch (app->game.pedido) {
     case PEDIDO_MAPEAR:              Input_capture_start(&app->input, app->game.pedido_acao); break;
     case PEDIDO_RESTAURAR_CONTROLES: Input_reset_defaults(&app->input);                       break;
     case PEDIDO_TROCAR_ANALOGICO:    Input_toggle_stick(&app->input);                         break;
     case PEDIDO_SAIR:                app->sair = true;                                        break;
+    case PEDIDO_ABRIR_MUSICA:        abre_musica(app, i);                                     break;
 
-    case PEDIDO_AUDIO_CARREGAR:
-        if (!app->tem_teste || Carregador_state(&app->carga) == CARGA_ANDANDO) break;
-        if (app->tocando == SOM_TESTE) { Audio_stop(&app->audio); app->tocando = SOM_NADA; }
-        Pcm_free(&app->musica_teste);
-        app->info_carga[0] = '\0';
-        Carregador_start(&app->carga, (const char (*)[512])app->teste.faixas, app->teste.n_faixas);
+    case PEDIDO_CARREGAR_MUSICA:
+        if (app->pcm_indice == i) Game_audio_ready(&app->game, true, (double)app->pcm.frames / AUDIO_TAXA);
+        else                      comeca_carga(app, i);   /* já decodificada: não decodifica de novo */
+        break;
+
+    case PEDIDO_CANCELAR_CARGA:
+        Carregador_quit(&app->carga);
+        break;
+
+    case PEDIDO_PROCURAR_MUSICAS:
+        Varredura_start(&app->varredura);   /* já procurando: ignora */
+        break;
+
+    case PEDIDO_AUDIO_CARREGAR:   /* tela de teste: a primeira música */
+        if (app->n_musicas > 0 && Carregador_state(&app->carga) != CARGA_ANDANDO) comeca_carga(app, 0);
         break;
 
     case PEDIDO_AUDIO_TOCAR:
-        if (app->musica_teste.frames == 0) break;   /* ainda não carregou */
+        if (app->pcm_indice != 0) break;   /* ainda não carregou */
         if (app->tocando == SOM_TESTE) {
             Audio_pause(&app->audio, !app->audio.pausado);
         } else {
-            Audio_play(&app->audio, &app->musica_teste, 0.0);
+            Audio_play(&app->audio, &app->pcm, 0.0);
             app->tocando = SOM_TESTE;
         }
         break;
@@ -175,6 +328,52 @@ static void atende_pedido(App *app)
     case PEDIDO_NENHUM:
         break;
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * Log de cada partida: o que estava valendo no começo e um resumo no fim.
+ * O erro médio de tempo é a pista para a calibração: negativo = o jogador
+ * (ou o som/tela) está adiantado; positivo = atrasado.
+ * ------------------------------------------------------------------------- */
+static void log_inicio(App *app)
+{
+    const Game *g = &app->game;
+    const bool com_musica = g->musica >= 0 && g->musica == app->pcm_indice && g->chart.duracao_audio > 0.0;
+    SDL_Log("[partida] inicio: %s | %d notas | janela +-%.0f ms%s | velocidade %d | som: %s | preparacao %.1f s",
+            g->chart.titulo, g->chart.n, Game_janela_acerto(g) * 1000.0, g->opcoes.precisao ? " (precisao)" : "",
+            g->opcoes.velocidade, !Audio_ok(&app->audio) ? "sem dispositivo" : (com_musica ? "musica" : "metronomo"),
+            -g->chart.inicio);
+    app->logando        = true;
+    app->partida_logada = g->partida;
+    app->frames_lentos  = 0;
+}
+
+static void log_fim(App *app, const char *como)
+{
+    const Game *g = &app->game;
+    const int julgadas = g->acertos + g->erros;
+    const double media  = g->acertos ? g->soma_erro / g->acertos : 0.0;
+    const double var    = g->acertos ? g->soma_erro2 / g->acertos - media * media : 0.0;
+    SDL_Log("[partida] %s em %.1f s: %ld pontos, %d/%d notas (%d%%), maior combo %d, star power %.0f%%",
+            como, g->t, (long)g->pontos, g->acertos, julgadas,
+            julgadas ? (100 * g->acertos + julgadas / 2) / julgadas : 0, g->maior_combo, 100.0f * g->sp_medidor);
+    SDL_Log("[partida] tempo dos acertos: erro medio %+.1f ms, desvio %.1f ms | pausas %d | frames lentos %d | "
+            "saltos do relogio %d", media * 1000.0, var > 0 ? SDL_sqrt(var) * 1000.0 : 0.0, g->pausas,
+            app->frames_lentos, app->audio.saltos);
+    app->logando = false;
+}
+
+static void acompanha_partida(App *app, double dt)
+{
+    const Game *g = &app->game;
+    const bool jogando = g->tela == TELA_JOGO && !g->terminou;
+    if (jogando && (!app->logando || app->partida_logada != g->partida)) {
+        if (app->logando) log_fim(app, "reiniciada");
+        log_inicio(app);
+    } else if (!jogando && app->logando) {
+        log_fim(app, g->terminou ? "terminou" : "abandonada");
+    }
+    if (jogando && !g->pausado && dt > 0.025) app->frames_lentos++;
 }
 
 /* ---------------------------------------------------------------------------
@@ -192,20 +391,23 @@ static void monta_hud(App *app, Hud *h, Uint64 agora_ns)
         h->tecla[a] = Input_key_label(&app->input, (Acao)a);
     }
 
+    h->procurando = Varredura_state(&app->varredura) != VARRE_PARADO;
+    h->achadas    = Varredura_found(&app->varredura);
+
     HudAudio *ha      = &h->audio;
     ha->ok            = Audio_ok(&app->audio);
     ha->driver        = app->audio.driver;
     ha->buffer_frames = app->audio.frames_buffer;
-    ha->musica        = app->tem_teste ? app->info_musica : NULL;
-    ha->pasta         = app->pasta_teste;
+    ha->musica        = app->n_musicas > 0 ? app->info_musica : NULL;
+    ha->pasta         = app->varredura.raizes[0];
     ha->faixas        = app->info_faixas;
-    ha->ignoradas     = app->teste.ignoradas;
+    ha->ignoradas     = app->n_musicas > 0 ? app->musicas[0].ignoradas : 0;
     ha->carga         = (int)Carregador_state(&app->carga);
     ha->progresso     = Carregador_progress(&app->carga);
     ha->carga_info    = app->info_carga[0] ? app->info_carga : NULL;
     ha->tocando       = app->tocando == SOM_TESTE;
     ha->pausado       = app->audio.pausado;
-    ha->duracao       = (double)app->musica_teste.frames / AUDIO_TAXA;
+    ha->duracao       = (double)app->pcm.frames / AUDIO_TAXA;
     if (ha->tocando) {
         ha->t_cru   = Audio_raw_time(&app->audio);
         ha->t_suave = Audio_song_time(&app->audio, agora_ns);
@@ -224,6 +426,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     App *app = SDL_calloc(1, sizeof(App));   /* tudo zerado: o Quit aguenta init parcial */
     if (!app) return SDL_APP_FAILURE;
     *appstate = app;
+    app->pcm_indice = -1;
 
     if (!Video_init(&app->video)) return SDL_APP_FAILURE;
     if (!Input_init(&app->input)) return SDL_APP_FAILURE;
@@ -236,7 +439,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     if (!Draw_init(&app->draw, app->video.ren, pasta)) return SDL_APP_FAILURE;
 
     Game_init(&app->game);
-    procura_musica_teste(app);
+
+    char *pref = SDL_GetPrefPath("", "arkhero");
+    SDL_Log("[arkhero] versao 0.1 | executavel em %s | dados em %s", SDL_GetBasePath(), pref ? pref : "?");
+    SDL_free(pref);
+    Varredura_start(&app->varredura);   /* a lista aparece quando terminar */
 
     app->ultimo_ns = SDL_GetTicksNS();
     return SDL_APP_CONTINUE;
@@ -273,8 +480,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     Game_update(&app->game, &botoes, dt);
     Score_apply_events(&app->game);
 
-    /* 5. PEDIDOS do jogo para a plataforma */
+    /* 5. PEDIDOS do jogo para a plataforma, e o que chegou das threads */
     atende_pedido(app);
+    aplica_varredura(app);
+    acompanha_partida(app, dt);
 
     /* 6. DESENHO */
     Hud hud = {0};
@@ -294,12 +503,15 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
     /* ordem inversa do Init: a thread de carga para antes de tudo, o som para
        antes de liberar o que ele toca, as texturas morrem antes do renderer */
+    if (app->logando) log_fim(app, "abandonada (jogo fechado)");
+    Varredura_quit(&app->varredura);
     Carregador_quit(&app->carga);
+    Musica_free_list(app->musicas, app->n_musicas);
     Game_quit(&app->game);
     Draw_quit(&app->draw);
     Audio_quit(&app->audio);
     Pcm_free(&app->cliques);
-    Pcm_free(&app->musica_teste);
+    Pcm_free(&app->pcm);
     Input_quit(&app->input);
     Video_quit(&app->video);
     SDL_free(app);

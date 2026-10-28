@@ -2,13 +2,17 @@
 #define ARK_CHART_H
 
 /* As notas de uma música, já em segundos e prontas para o jogo.
- * Quem preenche: por enquanto Chart_demo(); na próxima etapa, o parser de
- * .chart. O resto do jogo não percebe a diferença. */
+ * Quem preenche: Chart_from_file() (o parser de .chart, chartfile.c) ou
+ * Chart_demo(). O resto do jogo não percebe a diferença. */
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#define NOTA_STAR 0x01   /* flag: a nota faz parte de uma frase de star power */
+/* flags da nota */
+#define NOTA_STAR    0x01   /* faz parte de uma frase de star power */
+#define NOTA_ABERTA  0x02   /* nota aberta (sem traste): no modo controle, qualquer botão */
+#define NOTA_TAP     0x04   /* tap (para o modo guitarra; no modo controle não muda nada) */
+#define NOTA_FORCADA 0x08   /* HOPO forçado (idem) */
 
 typedef enum {
     NOTA_PENDENTE,
@@ -21,7 +25,8 @@ typedef struct {
     double  t;          /* instante da nota (segundos) */
     double  duracao;    /* sustain (segundos); 0 = nota simples */
     uint8_t mascara;    /* trastes: bit 0 = verde ... bit 4 = laranja; acorde = vários bits */
-    uint8_t flags;      /* NOTA_STAR */
+    uint8_t flags;      /* NOTA_STAR, NOTA_ABERTA... */
+    uint16_t frase;     /* frase de star power: 1, 2, 3...; 0 = nenhuma */
 
     /* estado do julgamento (zerado a cada partida, Chart_reset) */
     uint8_t estado;     /* EstadoNota */
@@ -40,7 +45,9 @@ typedef struct {
     Batida *batidas;    /* linhas de batida da pista */
     int     n_batidas;
     double  fim;        /* fim da última nota (segundos) */
-    char    titulo[64];
+    double  inicio;     /* onde a partida começa: negativo = tempo de preparação antes da música */
+    double  duracao_audio; /* duração da música, se houver áudio (0 = sem) */
+    char    titulo[96];
 } Chart;
 
 bool Chart_demo(Chart *c);                                  /* a música de demonstração */
