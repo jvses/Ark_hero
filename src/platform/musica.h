@@ -18,10 +18,12 @@
 typedef struct {
     char   pasta[512];                          /* termina em '/' */
     char   nome[96];                            /* nome da pasta */
+    char   grupo[256];                          /* subpastas entre a raiz e a música: "GH3/Tier 1" */
+    char   chave[200];                          /* identifica a música nos recordes (o main.c preenche) */
     char   faixas[CARREGADOR_MAX_FAIXAS][32];   /* nomes dos arquivos de áudio */
     int    n_faixas;
-    char   chart[32];                           /* "notes.chart" (como está no disco) */
-    int    ignoradas;                           /* áudios em formato ainda não suportado (mp3) */
+    char   chart[32];                           /* "notes.chart" ou "notes.mid" (como está no disco) */
+    int    ignoradas;                           /* faixas num formato que o jogo não lê (flac, m4a...) */
     char  *ini_texto;                           /* o song.ini lido (a thread lê; o main interpreta e libera) */
     size_t ini_tam;
 } Musica;
@@ -47,7 +49,6 @@ typedef struct {
     Musica *musicas;
     int     n, cap;
     int     pastas;              /* pastas visitadas */
-    int     so_mid;              /* músicas só com notes.mid (ainda não suportado) */
     int     sem_audio;           /* tinham chart mas nenhum áudio suportado */
     double  segundos;
 } Varredura;

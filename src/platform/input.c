@@ -12,18 +12,16 @@ static const SDL_GamepadAxis EIXO_X[2] = { SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_A
 static const SDL_GamepadAxis EIXO_Y[2] = { SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_AXIS_RIGHTY };
 
 /* ---------------------------------------------------------------------------
- * Mapeamento padrão.
+ * Mapeamento padrão. Os frontais são pela posição física (input.h):
  *
- * Controle: pensado para o R36S. As letras dos botões frontais do R36S seguem
- * o padrão Nintendo, e a SDL nomeia pela POSIÇÃO (padrão Xbox):
+ *   posição   aqui    Xbox   PlayStation   R36S (letra)
+ *   baixo     sul      A        X              B
+ *   direita   leste    B        bola           A
+ *   esquerda  oeste    X        quadrado       Y
+ *   cima      norte    Y        triângulo      X
  *
- *   posição    SDL (Xbox)   R36S   PlayStation
- *   baixo      a / SOUTH     B      X
- *   direita    b / EAST      A      bola
- *   esquerda   x / WEST      Y      quadrado
- *   cima       y / NORTH     X      triângulo
- *
- * Trastes no R36S: R1, R2, L2, L1 e o botão de baixo.
+ * Confirmar = sul e voltar = leste em qualquer controle (o costume do Xbox e
+ * do PlayStation). Trastes no R36S: R1, R2, L2, L1 e o sul.
  * Teclado: para jogar e testar no PC.
  * ------------------------------------------------------------------------- */
 static const Mapeamento PADRAO[ACAO_N] = {
@@ -31,7 +29,7 @@ static const Mapeamento PADRAO[ACAO_N] = {
     [ACAO_VERMELHO]      = { INPUT_FISICO_R2,                   SDL_SCANCODE_S },      /* R2 */
     [ACAO_AMARELO]       = { INPUT_FISICO_L2,                   SDL_SCANCODE_D },      /* L2 */
     [ACAO_AZUL]          = { SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,  SDL_SCANCODE_F },      /* L1 */
-    [ACAO_LARANJA]       = { SDL_GAMEPAD_BUTTON_SOUTH,          SDL_SCANCODE_G },      /* botão de baixo */
+    [ACAO_LARANJA]       = { SDL_GAMEPAD_BUTTON_SOUTH,          SDL_SCANCODE_G },      /* sul */
     [ACAO_PALHETA_CIMA]  = { SDL_GAMEPAD_BUTTON_DPAD_UP,        SDL_SCANCODE_UP },
     [ACAO_PALHETA_BAIXO] = { SDL_GAMEPAD_BUTTON_DPAD_DOWN,      SDL_SCANCODE_DOWN },
     [ACAO_STAR_POWER]    = { SDL_GAMEPAD_BUTTON_BACK,           SDL_SCANCODE_SPACE },  /* Select (e o analógico) */
@@ -42,17 +40,41 @@ static const Mapeamento PADRAO[ACAO_N] = {
     [ACAO_BAIXO]         = { SDL_GAMEPAD_BUTTON_DPAD_DOWN,      SDL_SCANCODE_DOWN },
     [ACAO_ESQUERDA]      = { SDL_GAMEPAD_BUTTON_DPAD_LEFT,      SDL_SCANCODE_LEFT },
     [ACAO_DIREITA]       = { SDL_GAMEPAD_BUTTON_DPAD_RIGHT,     SDL_SCANCODE_RIGHT },
-    [ACAO_CONFIRMA]      = { SDL_GAMEPAD_BUTTON_EAST,           SDL_SCANCODE_RETURN }, /* A do R36S */
-    [ACAO_VOLTA]         = { SDL_GAMEPAD_BUTTON_SOUTH,          SDL_SCANCODE_ESCAPE }, /* B do R36S */
+    [ACAO_CONFIRMA]      = { SDL_GAMEPAD_BUTTON_SOUTH,          SDL_SCANCODE_RETURN }, /* sul */
+    [ACAO_VOLTA]         = { SDL_GAMEPAD_BUTTON_EAST,           SDL_SCANCODE_ESCAPE }, /* leste */
 };
 
 /* ---------------------------------------------------------------------------
  * Nomes dos botões físicos
  * ------------------------------------------------------------------------- */
 
-/* nome da SDL ("leftshoulder", "lefttrigger"...): é o que vai para o arquivo */
+static bool frontal(int b)
+{
+    return b == SDL_GAMEPAD_BUTTON_SOUTH || b == SDL_GAMEPAD_BUTTON_EAST ||
+           b == SDL_GAMEPAD_BUTTON_WEST || b == SDL_GAMEPAD_BUTTON_NORTH;
+}
+
+/* SDL <-> posição física: no estilo Nintendo, sul<->leste e oeste<->norte
+   (a mesma troca serve nos dois sentidos) */
+static int converte_frontal(bool trocado, int b)
+{
+    if (!trocado) return b;
+    switch (b) {
+    case SDL_GAMEPAD_BUTTON_SOUTH: return SDL_GAMEPAD_BUTTON_EAST;
+    case SDL_GAMEPAD_BUTTON_EAST:  return SDL_GAMEPAD_BUTTON_SOUTH;
+    case SDL_GAMEPAD_BUTTON_WEST:  return SDL_GAMEPAD_BUTTON_NORTH;
+    case SDL_GAMEPAD_BUTTON_NORTH: return SDL_GAMEPAD_BUTTON_WEST;
+    default:                       return b;
+    }
+}
+
+static const char *const CARDEAIS[4] = { "sul", "leste", "oeste", "norte" };   /* SOUTH, EAST, WEST, NORTH */
+
+/* nome no arquivo: os frontais pela posição ("sul"), o resto pelo nome da SDL
+   ("leftshoulder", "lefttrigger"...) */
 static const char *nome_pad(int fisico)
 {
+    if (frontal(fisico)) return CARDEAIS[fisico - SDL_GAMEPAD_BUTTON_SOUTH];
     if (fisico == INPUT_FISICO_L2) return SDL_GetGamepadStringForAxis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
     if (fisico == INPUT_FISICO_R2) return SDL_GetGamepadStringForAxis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
     if (fisico >= 0 && fisico < SDL_GAMEPAD_BUTTON_COUNT) {
@@ -62,13 +84,20 @@ static const char *nome_pad(int fisico)
     return "-";
 }
 
-/* o contrário: do nome no arquivo para o botão. -2 = nome desconhecido */
-static int pad_do_nome(const char *nome)
+/* o contrário: do nome no arquivo para o botão. -2 = nome desconhecido.
+   *cru = era "a"/"b"/"x"/"y" (arquivo antigo): a posição depende do controle */
+static int pad_do_nome(const char *nome, bool *cru)
 {
+    *cru = false;
     if (SDL_strcmp(nome, "-") == 0) return INPUT_FISICO_NENHUM;
+    for (int i = 0; i < 4; i++)
+        if (SDL_strcmp(nome, CARDEAIS[i]) == 0) return SDL_GAMEPAD_BUTTON_SOUTH + i;
 
     const SDL_GamepadButton b = SDL_GetGamepadButtonFromString(nome);
-    if (b != SDL_GAMEPAD_BUTTON_INVALID) return (int)b;
+    if (b != SDL_GAMEPAD_BUTTON_INVALID) {
+        *cru = frontal(b);
+        return (int)b;
+    }
 
     const SDL_GamepadAxis e = SDL_GetGamepadAxisFromString(nome);
     if (e == SDL_GAMEPAD_AXIS_LEFT_TRIGGER)  return INPUT_FISICO_L2;
@@ -76,17 +105,17 @@ static int pad_do_nome(const char *nome)
     return -2;
 }
 
-/* nome curto para a tela, com as letras impressas no R36S */
+/* nome curto para a tela: os frontais pela posição, que vale em qualquer controle */
 static const char *rotulo_pad(int fisico)
 {
     switch (fisico) {
     case INPUT_FISICO_NENHUM:                return "-";
     case INPUT_FISICO_L2:                    return "L2";
     case INPUT_FISICO_R2:                    return "R2";
-    case SDL_GAMEPAD_BUTTON_SOUTH:           return "B";
-    case SDL_GAMEPAD_BUTTON_EAST:            return "A";
-    case SDL_GAMEPAD_BUTTON_WEST:            return "Y";
-    case SDL_GAMEPAD_BUTTON_NORTH:           return "X";
+    case SDL_GAMEPAD_BUTTON_SOUTH:           return "Sul";
+    case SDL_GAMEPAD_BUTTON_EAST:            return "Leste";
+    case SDL_GAMEPAD_BUTTON_WEST:            return "Oeste";
+    case SDL_GAMEPAD_BUTTON_NORTH:           return "Norte";
     case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:   return "L1";
     case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:  return "R1";
     case SDL_GAMEPAD_BUTTON_LEFT_STICK:      return "L3";
@@ -121,15 +150,17 @@ static void salva(const Input *inp)
     char texto[2048];
     int usado = SDL_snprintf(texto, sizeof(texto),
                              "# Ark Hero - controles (gerado pelo jogo, pode editar)\n"
-                             "# acao|botao do controle (nome da SDL)|tecla\n");
+                             "# acao|botao do controle|tecla\n"
+                             "# frontais pela posicao: sul (baixo), leste (direita), oeste, norte\n");
     for (int a = 0; a < ACAO_N_REMAPEAVEIS && usado < (int)sizeof(texto); a++) {
         usado += SDL_snprintf(texto + usado, sizeof(texto) - (size_t)usado, "%s|%s|%s\n",
                               Acao_id((Acao)a), nome_pad(inp->mapa[a].pad),
                               nome_tecla(inp->mapa[a].tecla));
     }
     if (usado < (int)sizeof(texto)) {
-        usado += SDL_snprintf(texto + usado, sizeof(texto) - (size_t)usado, "analogico|%s|-\n",
-                              inp->analogico ? "direito" : "esquerdo");
+        static const char *const FRONTAIS[FRONTAIS_N] = { "auto", "xbox", "nintendo" };
+        usado += SDL_snprintf(texto + usado, sizeof(texto) - (size_t)usado, "analogico|%s|-\nfrontais|%s|-\n",
+                              inp->analogico ? "direito" : "esquerdo", FRONTAIS[inp->frontais]);
     }
     if (usado >= (int)sizeof(texto)) usado = (int)sizeof(texto) - 1;
 
@@ -163,11 +194,20 @@ static void carrega(Input *inp)
             inp->analogico = SDL_strcmp(pad, "direito") == 0 ? 1 : 0;
             continue;
         }
+        if (SDL_strcmp(id, "frontais") == 0) {
+            inp->frontais = SDL_strcmp(pad, "xbox") == 0 ? FRONTAIS_XBOX
+                          : SDL_strcmp(pad, "nintendo") == 0 ? FRONTAIS_NINTENDO : FRONTAIS_AUTO;
+            continue;
+        }
         for (int a = 0; a < ACAO_N_REMAPEAVEIS; a++) {
             if (SDL_strcmp(id, Acao_id((Acao)a)) != 0) continue;
 
-            const int p = pad_do_nome(pad);
-            if (p != -2) inp->mapa[a].pad = p;
+            bool cru;
+            const int p = pad_do_nome(pad, &cru);
+            if (p != -2) {
+                inp->mapa[a].pad = p;
+                inp->mapa[a].cru = cru;
+            }
             inp->mapa[a].tecla = SDL_strcmp(tecla, "-") == 0 ? SDL_SCANCODE_UNKNOWN
                                                              : SDL_GetScancodeFromName(tecla);
             break;
@@ -223,6 +263,52 @@ void Input_toggle_stick(Input *inp)
     inp->alavanca_cima = false;
     salva(inp);
     SDL_Log("[input] whammy e star power no analogico %s", Input_stick_label(inp));
+}
+
+/* nomes de controles que (no PortMaster) chamam os frontais pela letra
+   impressa, no estilo Nintendo: o "b" da SDL é o botão de baixo */
+static const char *const NINTENDO[] = {
+    "GO-Super Gamepad", "GO-Advance Gamepad", "GO-Ultra Gamepad", "OpenSimHardware OSH PB Controller",
+};
+
+/* o controle conectado é do estilo Nintendo? */
+static bool detecta_nintendo(SDL_Gamepad *pad)
+{
+    const char *nome = SDL_GetGamepadName(pad);
+    for (size_t i = 0; nome && i < SDL_arraysize(NINTENDO); i++)
+        if (SDL_strcmp(nome, NINTENDO[i]) == 0) return true;
+    /* outros: "a" e "b" apontando para os botões crus 1 e 0, ao contrário do
+       normal (no Xbox, a:b0 e b:b1), é o mesmo sinal */
+    char *mapa = SDL_GetGamepadMapping(pad);
+    const bool trocado = mapa && SDL_strstr(mapa, ",a:b1,") && SDL_strstr(mapa, ",b:b0,");
+    SDL_free(mapa);
+    return trocado;
+}
+
+static void decide_frontais(Input *inp)
+{
+    if (inp->frontais == FRONTAIS_XBOX)          inp->trocado = false;
+    else if (inp->frontais == FRONTAIS_NINTENDO) inp->trocado = true;
+    else inp->trocado = inp->gamepad && detecta_nintendo(inp->gamepad);
+
+    /* mapeamentos de um arquivo antigo (com "a"/"b" da SDL): agora que o
+       controle é conhecido, viram posição física de vez */
+    bool converteu = false;
+    for (int a = 0; a < ACAO_N; a++) {
+        if (!inp->mapa[a].cru || !inp->gamepad) continue;
+        inp->mapa[a].pad = converte_frontal(inp->trocado, inp->mapa[a].pad);
+        inp->mapa[a].cru = false;
+        converteu = true;
+    }
+    if (converteu) salva(inp);
+    SDL_Log("[input] botoes frontais: %s", Input_layout_label(inp));
+}
+
+void Input_cycle_layout(Input *inp)
+{
+    inp->frontais = (inp->frontais + 1) % FRONTAIS_N;
+    decide_frontais(inp);
+    salva(inp);
 }
 
 void Input_reset_defaults(Input *inp)
@@ -294,6 +380,27 @@ static void alavanca_vertical(Input *inp, Sint16 valor)
     }
 }
 
+/* Um analógico mexido com vontade: aparece no "último botão" da tela de
+ * Controles, e, se a captura do Whammy está esperando, escolhe esse
+ * analógico para o whammy (e o star power para cima). */
+static void analogico_mexeu(Input *inp, int eixo, Sint16 valor)
+{
+    int lado = -1;
+    if (eixo == SDL_GAMEPAD_AXIS_LEFTX || eixo == SDL_GAMEPAD_AXIS_LEFTY)   lado = 0;
+    if (eixo == SDL_GAMEPAD_AXIS_RIGHTX || eixo == SDL_GAMEPAD_AXIS_RIGHTY) lado = 1;
+    if (lado < 0 || (valor > -24000 && valor < 24000)) return;
+
+    SDL_snprintf(inp->ultimo, sizeof(inp->ultimo), "analogico %s", lado ? "direito" : "esquerdo");
+    if (inp->capturando == ACAO_WHAMMY) {
+        inp->analogico     = lado;
+        inp->alavanca_cima = false;
+        inp->mapa[ACAO_WHAMMY].pad = INPUT_FISICO_NENHUM;   /* o whammy é o analógico, não um botão */
+        inp->capturando    = -1;
+        salva(inp);
+        SDL_Log("[input] whammy -> analogico %s", Input_stick_label(inp));
+    }
+}
+
 void Input_event(Input *inp, const SDL_Event *ev)
 {
     switch (ev->type) {
@@ -302,6 +409,7 @@ void Input_event(Input *inp, const SDL_Event *ev)
             inp->gamepad = SDL_OpenGamepad(ev->gdevice.which);
             if (inp->gamepad) {
                 inp->which = ev->gdevice.which;
+                decide_frontais(inp);
                 /* o mapeamento diz qual botão físico a SDL chama de a/b/x/y:
                    é a resposta para "o botão de baixo é o A ou o B?" */
                 char *mapa = SDL_GetGamepadMapping(inp->gamepad);
@@ -334,7 +442,7 @@ void Input_event(Input *inp, const SDL_Event *ev)
             inp->sair = true;
             break;
         }
-        aperto_pad(inp, (int)b);
+        aperto_pad(inp, converte_frontal(inp->trocado, (int)b));   /* SDL -> posição física */
         break;
     }
 
@@ -344,6 +452,7 @@ void Input_event(Input *inp, const SDL_Event *ev)
         if (ev->gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER)  eixo_gatilho(inp, 0, ev->gaxis.value);
         if (ev->gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) eixo_gatilho(inp, 1, ev->gaxis.value);
         if (ev->gaxis.axis == EIXO_Y[inp->analogico])        alavanca_vertical(inp, ev->gaxis.value);
+        analogico_mexeu(inp, ev->gaxis.axis, ev->gaxis.value);
         break;
 
     case SDL_EVENT_KEY_DOWN:
@@ -364,7 +473,7 @@ static bool pad_segurado(const Input *inp, int fisico)
     if (!inp->gamepad || fisico == INPUT_FISICO_NENHUM) return false;
     if (fisico == INPUT_FISICO_L2) return inp->gatilho[0];
     if (fisico == INPUT_FISICO_R2) return inp->gatilho[1];
-    return SDL_GetGamepadButton(inp->gamepad, (SDL_GamepadButton)fisico);
+    return SDL_GetGamepadButton(inp->gamepad, (SDL_GamepadButton)converte_frontal(inp->trocado, fisico));
 }
 
 Botoes Input_frame(Input *inp)
@@ -457,7 +566,7 @@ void Input_quit(Input *inp)
 const char *Input_pad_label(const Input *inp, Acao a)
 {
     if (a < 0 || a >= ACAO_N) return "-";
-    if (a == ACAO_WHAMMY && inp->mapa[a].pad == INPUT_FISICO_NENHUM) return "Analog.";
+    if (a == ACAO_WHAMMY && inp->mapa[a].pad == INPUT_FISICO_NENHUM) return inp->analogico ? "Analog. D" : "Analog. E";
     return rotulo_pad(inp->mapa[a].pad);
 }
 
@@ -469,4 +578,13 @@ const char *Input_key_label(const Input *inp, Acao a)
 const char *Input_stick_label(const Input *inp)
 {
     return inp->analogico ? "Direito" : "Esquerdo";
+}
+
+const char *Input_layout_label(const Input *inp)
+{
+    switch (inp->frontais) {
+    case FRONTAIS_XBOX:     return "Xbox";
+    case FRONTAIS_NINTENDO: return "Nintendo";
+    default:                return inp->trocado ? "Auto (Nintendo)" : "Auto (Xbox)";
+    }
 }

@@ -209,7 +209,11 @@ static void caudas(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
  * ------------------------------------------------------------------------- */
 #define NOTA_LARG 0.72f   /* largura da nota, em fração da largura da faixa */
 
-static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color cor, bool star)
+/* palheta = nota comum (precisaria de palhetada): miolo preto com o centro
+ * branco, como no Guitar Hero. HOPO e tap (não precisam de palhetada): o
+ * miolo colorido. No modo controle todas se tocam igual; é a informação de
+ * como a música foi escrita, e vale para o modo guitarra. */
+static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color cor, bool star, bool palheta)
 {
     const float f = escala(p, z);
     const float w = NOTA_LARG * largura_faixa(p) * f;
@@ -223,8 +227,13 @@ static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color 
         cor = cor_mistura(cor, COR_TEXTO, 0.55f);
     }
     elipse(ren, c.x, c.y, w, h, cor_alfa(cor, a));
-    elipse(ren, c.x, c.y - h * 0.08f, w * 0.62f, h * 0.55f, cor_alfa(cor_mistura(cor, COR_TEXTO, 0.45f), a));
-    elipse(ren, c.x, c.y - h * 0.10f, w * 0.26f, h * 0.24f, cor_alfa(COR_TEXTO, a * 0.85f));
+    if (palheta) {
+        elipse(ren, c.x, c.y - h * 0.04f, w * 0.60f, h * 0.58f, cor_alfa((SDL_Color){ 15, 10, 20, 255 }, a));
+        elipse(ren, c.x, c.y - h * 0.06f, w * 0.36f, h * 0.34f, cor_alfa(COR_TEXTO, a));
+    } else {
+        elipse(ren, c.x, c.y - h * 0.08f, w * 0.62f, h * 0.55f, cor_alfa(cor_mistura(cor, COR_TEXTO, 0.45f), a));
+        elipse(ren, c.x, c.y - h * 0.10f, w * 0.26f, h * 0.24f, cor_alfa(COR_TEXTO, a * 0.85f));
+    }
 }
 
 /* nota aberta: uma barra que atravessa as cinco faixas */
@@ -259,7 +268,8 @@ static void notas(SDL_Renderer *ren, const Pista *p, const Game *g, int ultima)
         for (int f = 0; f < ACAO_N_TRASTES; f++) {
             if (!(n->mascara & (1u << f))) continue;
             nota(ren, p, u_da_faixa(g, f), z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : COR_TRASTE[f],
-                 !perdida && (n->flags & NOTA_STAR));
+                 !perdida && (n->flags & NOTA_STAR),
+                 !(n->flags & (NOTA_HOPO | NOTA_TAP)));   /* palhetada? */
         }
     }
 }

@@ -22,6 +22,14 @@
 
 typedef enum { SOM_NADA, SOM_PARTIDA, SOM_TESTE } OQueToca;
 
+/* um recorde salvo: a chave identifica a música mesmo se ela mudar de pasta */
+typedef struct Recorde {
+    char chave[200];
+    long pontos;
+    int  dif, pct;
+    bool fc;
+} Recorde;
+
 typedef struct {
     Video  video;
     Input  input;
@@ -33,6 +41,12 @@ typedef struct {
     Musica   *musicas;
     int       n_musicas;
     Varredura varredura;          /* procura as pastas numa thread */
+
+    /* arquivos de dados, no PrefPath (no console: ports/arkhero/conf/arkhero/) */
+    char      arquivo_opcoes[512];
+    char      arquivo_recordes[512];
+    struct Recorde *recordes;     /* o recordes.txt inteiro na memória */
+    int       n_recordes, cap_recordes;
 
     /* o que o log registra de cada partida */
     bool   logando;
@@ -54,6 +68,103 @@ typedef struct {
     Uint64 ultimo_ns;
     bool   sair;
 } App;
+
+/* ---------------------------------------------------------------------------
+ * Opções e recordes: arquivos de texto no PrefPath. O game converte as
+ * opções (Opcoes_read/write); os recordes são uma linha por música:
+ *     chave|pontos|dificuldade|porcentagem|full combo
+ * ------------------------------------------------------------------------- */
+static void carrega_opcoes(App *app)
+{
+    size_t tam = 0;
+    char *texto = SDL_LoadFile(app->arquivo_opcoes, &tam);
+    if (!texto) return;   /* primeira vez: ficam os padrões */
+    Opcoes_read(&app->game.opcoes, texto, tam);
+    SDL_free(texto);
+    Game_songs_done(&app->game);   /* o modo de organizar pode ter mudado */
+    SDL_Log("[arkhero] opcoes carregadas de %s", app->arquivo_opcoes);
+}
+
+static void salva_opcoes(App *app)
+{
+    char texto[512];
+    const int n = Opcoes_write(&app->game.opcoes, texto, sizeof(texto));
+    if (n > 0 && !SDL_SaveFile(app->arquivo_opcoes, texto, (size_t)n))
+        SDL_Log("[arkhero] nao salvei as opcoes: %s", SDL_GetError());
+}
+
+static Recorde *acha_recorde(App *app, const char *chave)
+{
+    for (int i = 0; i < app->n_recordes; i++)
+        if (SDL_strcmp(app->recordes[i].chave, chave) == 0) return &app->recordes[i];
+    return NULL;
+}
+
+static Recorde *novo_recorde(App *app, const char *chave)
+{
+    if (app->n_recordes >= app->cap_recordes) {
+        const int cap = app->cap_recordes ? app->cap_recordes * 2 : 64;
+        Recorde *novo = SDL_realloc(app->recordes, sizeof(Recorde) * (size_t)cap);
+        if (!novo) return NULL;
+        app->recordes     = novo;
+        app->cap_recordes = cap;
+    }
+    Recorde *r = &app->recordes[app->n_recordes++];
+    SDL_zerop(r);
+    SDL_strlcpy(r->chave, chave, sizeof(r->chave));
+    return r;
+}
+
+static void carrega_recordes(App *app)
+{
+    size_t tam = 0;
+    char *texto = SDL_LoadFile(app->arquivo_recordes, &tam);
+    if (!texto) return;
+    char *fim = NULL;
+    for (char *linha = SDL_strtok_r(texto, "\r\n", &fim); linha; linha = SDL_strtok_r(NULL, "\r\n", &fim)) {
+        if (linha[0] == '#') continue;
+        char *campo = NULL;
+        const char *chave = SDL_strtok_r(linha, "|", &campo);
+        const char *pontos = SDL_strtok_r(NULL, "|", &campo);
+        const char *dif = SDL_strtok_r(NULL, "|", &campo);
+        const char *pct = SDL_strtok_r(NULL, "|", &campo);
+        const char *fc = SDL_strtok_r(NULL, "|", &campo);
+        if (!chave || !pontos || !dif || !pct || !fc) continue;
+        Recorde *r = novo_recorde(app, chave);
+        if (!r) break;
+        r->pontos = SDL_strtol(pontos, NULL, 10);
+        r->dif    = SDL_atoi(dif);
+        r->pct    = SDL_atoi(pct);
+        r->fc     = SDL_atoi(fc) != 0;
+    }
+    SDL_free(texto);
+    SDL_Log("[arkhero] %d recorde(s) em %s", app->n_recordes, app->arquivo_recordes);
+}
+
+static void salva_recordes(App *app)
+{
+    size_t cap = 128 + (size_t)app->n_recordes * 240, n = 0;
+    char *texto = SDL_malloc(cap);
+    if (!texto) return;
+    n += (size_t)SDL_snprintf(texto, cap, "# Ark Hero - recordes: chave|pontos|dificuldade|porcentagem|full combo\n");
+    for (int i = 0; i < app->n_recordes && n < cap; i++) {
+        const Recorde *r = &app->recordes[i];
+        n += (size_t)SDL_snprintf(texto + n, cap - n, "%s|%ld|%d|%d|%d\n", r->chave, r->pontos, r->dif, r->pct, r->fc);
+    }
+    if (n > cap) n = cap;
+    if (!SDL_SaveFile(app->arquivo_recordes, texto, n)) SDL_Log("[arkhero] nao salvei os recordes: %s", SDL_GetError());
+    SDL_free(texto);
+}
+
+/* chave: título|artista|charter em minúsculas. Sobrevive a mudar a pasta de lugar */
+static void monta_chave(char *chave, size_t n, const SongIni *ini)
+{
+    SDL_snprintf(chave, n, "%s/%s/%s", ini->nome, ini->artista, ini->charter);
+    for (char *c = chave; *c; c++) {
+        if (*c == '|') *c = '/';
+        else if (*c >= 'A' && *c <= 'Z') *c = (char)(*c - 'A' + 'a');
+    }
+}
 
 /* ---------------------------------------------------------------------------
  * Músicas. A thread da varredura acha as pastas e lê os song.ini; aqui o
@@ -102,7 +213,7 @@ static void aplica_varredura(App *app)
     if (Carregador_state(&app->carga) == CARGA_ANDANDO) return;
 
     const Varredura *v = &app->varredura;
-    const int pastas = v->pastas, so_mid = v->so_mid, sem_audio = v->sem_audio;
+    const int pastas = v->pastas, sem_audio = v->sem_audio;
     const double seg = v->segundos;
     Musica *nova = NULL;
     int n = 0;
@@ -143,7 +254,12 @@ static void aplica_varredura(App *app)
     if (app->pcm_indice < 0) Pcm_free(&app->pcm);
 
     Game_clear_songs(g);
-    for (int i = 0; i < n; i++) Game_add_song(g, &ordem[i].ini, ordenada[i].nome);
+    for (int i = 0; i < n; i++) {
+        Game_add_song(g, &ordem[i].ini, ordenada[i].nome, ordenada[i].grupo);
+        monta_chave(ordenada[i].chave, sizeof(ordenada[i].chave), &ordem[i].ini);
+        const Recorde *r = acha_recorde(app, ordenada[i].chave);
+        if (r) Game_set_record(g, i, r->pontos, r->dif, r->pct, r->fc);
+    }
     Game_songs_done(g);
     g->musica = -1;
     if (sel_pasta[0]) {
@@ -153,8 +269,10 @@ static void aplica_varredura(App *app)
     SDL_free(ordem);
     textos_do_teste(app);
 
-    SDL_Log("[musica] %d musica(s) em %.2f s (%d pastas olhadas; %d so com notes.mid, ainda nao suportado; "
-            "%d com chart mas sem audio suportado)", n, seg, pastas, so_mid, sem_audio);
+    int mid = 0;
+    for (int i = 0; i < n; i++) mid += SDL_strcasecmp(ordenada[i].chart, "notes.mid") == 0;
+    SDL_Log("[musica] %d musica(s) em %.2f s (%d com .chart, %d com .mid; %d pastas olhadas; "
+            "%d com chart mas sem audio suportado)", n, seg, n - mid, mid, pastas, sem_audio);
 }
 
 /* o jogo escolheu uma música: ler o notes.chart e entregar o texto a ele */
@@ -194,7 +312,7 @@ static void comeca_carga(App *app, int i)
     const Musica *m = &app->musicas[i];
     char arquivos[CARREGADOR_MAX_FAIXAS][512];
     for (int k = 0; k < m->n_faixas; k++) Musica_path(m, m->faixas[k], arquivos[k], sizeof(arquivos[k]));
-    SDL_Log("[carga] %s: %d faixa(s)%s", m->nome, m->n_faixas, m->ignoradas ? " (mp3 ignorado)" : "");
+    SDL_Log("[carga] %s: %d faixa(s)%s", m->nome, m->n_faixas, m->ignoradas ? " (alguma faixa em formato nao suportado)" : "");
     Carregador_start(&app->carga, (const char (*)[512])arquivos, m->n_faixas);
 }
 
@@ -295,6 +413,7 @@ static void atende_pedido(App *app)
     case PEDIDO_MAPEAR:              Input_capture_start(&app->input, app->game.pedido_acao); break;
     case PEDIDO_RESTAURAR_CONTROLES: Input_reset_defaults(&app->input);                       break;
     case PEDIDO_TROCAR_ANALOGICO:    Input_toggle_stick(&app->input);                         break;
+    case PEDIDO_TROCAR_FRONTAIS:     Input_cycle_layout(&app->input);                         break;
     case PEDIDO_SAIR:                app->sair = true;                                        break;
     case PEDIDO_ABRIR_MUSICA:        abre_musica(app, i);                                     break;
 
@@ -309,6 +428,27 @@ static void atende_pedido(App *app)
 
     case PEDIDO_PROCURAR_MUSICAS:
         Varredura_start(&app->varredura);   /* já procurando: ignora */
+        break;
+
+    case PEDIDO_SALVAR_OPCOES:
+        salva_opcoes(app);
+        break;
+
+    case PEDIDO_SALVAR_RECORDE:
+        if (i >= 0 && i < app->n_musicas) {
+            const InfoMusica *m = &app->game.musicas[i];
+            Recorde *r = acha_recorde(app, app->musicas[i].chave);
+            if (!r) r = novo_recorde(app, app->musicas[i].chave);
+            if (r) {
+                r->pontos = m->recorde;
+                r->dif    = m->recorde_dif;
+                r->pct    = m->recorde_pct;
+                r->fc     = m->recorde_fc;
+                salva_recordes(app);
+            }
+            SDL_Log("[partida] NOVO RECORDE em %s: %ld pontos (antes %ld)", m->titulo, m->recorde,
+                    app->game.recorde_anterior);
+        }
         break;
 
     case PEDIDO_AUDIO_CARREGAR:   /* tela de teste: a primeira música */
@@ -342,7 +482,9 @@ static void log_inicio(App *app)
     SDL_Log("[partida] inicio: %s | %d notas | janela +-%.0f ms%s | velocidade %d | som: %s | preparacao %.1f s",
             g->chart.titulo, g->chart.n, Game_janela_acerto(g) * 1000.0, g->opcoes.precisao ? " (precisao)" : "",
             g->opcoes.velocidade, !Audio_ok(&app->audio) ? "sem dispositivo" : (com_musica ? "musica" : "metronomo"),
-            -g->chart.inicio);
+            g->chart.inicio < 0.0 ? -g->chart.inicio : 0.0);
+    SDL_Log("[partida] penalidade %s | ajuste de tempo %+d ms", g->opcoes.penalidade ? "sim" : "nao",
+            g->opcoes.ajuste_ms);
     app->logando        = true;
     app->partida_logada = g->partida;
     app->frames_lentos  = 0;
@@ -357,9 +499,11 @@ static void log_fim(App *app, const char *como)
     SDL_Log("[partida] %s em %.1f s: %ld pontos, %d/%d notas (%d%%), maior combo %d, star power %.0f%%",
             como, g->t, (long)g->pontos, g->acertos, julgadas,
             julgadas ? (100 * g->acertos + julgadas / 2) / julgadas : 0, g->maior_combo, 100.0f * g->sp_medidor);
-    SDL_Log("[partida] tempo dos acertos: erro medio %+.1f ms, desvio %.1f ms | pausas %d | frames lentos %d | "
-            "saltos do relogio %d", media * 1000.0, var > 0 ? SDL_sqrt(var) * 1000.0 : 0.0, g->pausas,
-            app->frames_lentos, app->audio.saltos);
+    SDL_Log("[partida] tempo dos acertos: erro medio %+.1f ms, desvio %.1f ms | toques sem nota %d | pausas %d | "
+            "frames lentos %d | saltos do relogio %d", media * 1000.0, var > 0 ? SDL_sqrt(var) * 1000.0 : 0.0,
+            g->toques_errados, g->pausas, app->frames_lentos, app->audio.saltos);
+    if (g->acertos >= 20 && SDL_fabs(media) >= 0.010)
+        SDL_Log("[partida] sugestao: Ajuste de tempo %+d ms", g->opcoes.ajuste_ms - (int)SDL_lround(media * 1000.0));
     app->logando = false;
 }
 
@@ -386,6 +530,7 @@ static void monta_hud(App *app, Hud *h, Uint64 agora_ns)
     h->captura_resta = Input_capture_left(&app->input);
     h->ultimo        = app->input.ultimo;
     h->analogico     = Input_stick_label(&app->input);
+    h->frontais      = Input_layout_label(&app->input);
     for (int a = 0; a < ACAO_N; a++) {
         h->pad[a]   = Input_pad_label(&app->input, (Acao)a);
         h->tecla[a] = Input_key_label(&app->input, (Acao)a);
@@ -442,6 +587,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     char *pref = SDL_GetPrefPath("", "arkhero");
     SDL_Log("[arkhero] versao 0.1 | executavel em %s | dados em %s", SDL_GetBasePath(), pref ? pref : "?");
+    if (pref) {
+        SDL_snprintf(app->arquivo_opcoes, sizeof(app->arquivo_opcoes), "%sopcoes.cfg", pref);
+        SDL_snprintf(app->arquivo_recordes, sizeof(app->arquivo_recordes), "%srecordes.txt", pref);
+        carrega_opcoes(app);
+        carrega_recordes(app);
+    }
     SDL_free(pref);
     Varredura_start(&app->varredura);   /* a lista aparece quando terminar */
 
@@ -507,6 +658,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     Varredura_quit(&app->varredura);
     Carregador_quit(&app->carga);
     Musica_free_list(app->musicas, app->n_musicas);
+    SDL_free(app->recordes);
     Game_quit(&app->game);
     Draw_quit(&app->draw);
     Audio_quit(&app->audio);

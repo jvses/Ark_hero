@@ -3,6 +3,16 @@
 #include <opusfile.h>
 #include <vorbis/vorbisfile.h>
 
+/* MP3: o dr_mp3 é um arquivo só; a implementação entra neste .c.
+   Sem as funções de stdio próprias dele: a leitura é pela SDL (mesmo caminho
+   no PC e no console) e a memória também. */
+#define DR_MP3_IMPLEMENTATION
+#define DR_MP3_NO_STDIO
+#define DRMP3_MALLOC(n)     SDL_malloc(n)
+#define DRMP3_REALLOC(p, n) SDL_realloc(p, n)
+#define DRMP3_FREE(p)       SDL_free(p)
+#include "dr_mp3.h"
+
 #define LEITURA    4096                  /* frames lidos por vez de cada arquivo */
 #define SAIDA_MAX  (LEITURA * 4)         /* frames convertidos por vez (folga para reamostrar) */
 #define MARGEM     (AUDIO_TAXA / 10)     /* 100 ms a mais no fim, por segurança */
@@ -12,7 +22,7 @@
  * converte para o nosso (s16, estéreo, 48 kHz). Vorbis costuma vir a
  * 44,1 kHz; o Opus é sempre 48 kHz.
  * ------------------------------------------------------------------------- */
-typedef enum { FONTE_OPUS, FONTE_VORBIS, FONTE_WAV } TipoFonte;
+typedef enum { FONTE_OPUS, FONTE_VORBIS, FONTE_WAV, FONTE_MP3 } TipoFonte;
 
 typedef struct {
     TipoFonte      tipo;
@@ -20,6 +30,9 @@ typedef struct {
     OggVorbis_File vorbis;
     Uint8         *wav;
     Uint32         wav_bytes, wav_pos;
+    drmp3          mp3;
+    void          *mp3_dados;   /* o arquivo inteiro na memória (o dr_mp3 lê dele) */
+    bool           mp3_aberto;
     SDL_AudioSpec  spec;     /* formato que a faixa entrega */
     Sint64         frames;   /* duração, em frames da própria faixa */
 } Fonte;
@@ -33,6 +46,24 @@ static bool termina_com(const char *s, const char *fim)
 static bool abre(Fonte *f, const char *caminho)
 {
     *f = (Fonte){0};
+
+    if (termina_com(caminho, ".mp3")) {
+        size_t tam = 0;
+        f->mp3_dados = SDL_LoadFile(caminho, &tam);
+        if (!f->mp3_dados) return false;
+        if (!drmp3_init_memory(&f->mp3, f->mp3_dados, tam, NULL)) {
+            SDL_free(f->mp3_dados);
+            f->mp3_dados = NULL;
+            SDL_SetError("MP3 invalido");
+            return false;
+        }
+        f->mp3_aberto = true;
+        f->tipo   = FONTE_MP3;
+        f->spec   = (SDL_AudioSpec){ SDL_AUDIO_F32, (int)f->mp3.channels, (int)f->mp3.sampleRate };
+        f->frames = (Sint64)drmp3_get_pcm_frame_count(&f->mp3);   /* percorre o arquivo: na carga, tudo bem */
+        drmp3_seek_to_pcm_frame(&f->mp3, 0);
+        return true;
+    }
 
     if (termina_com(caminho, ".wav")) {
         if (!SDL_LoadWAV(caminho, &f->spec, &f->wav, &f->wav_bytes)) return false;
@@ -67,6 +98,8 @@ static void fecha(Fonte *f)
 {
     if (f->opus) op_free(f->opus);
     if (f->tipo == FONTE_VORBIS) ov_clear(&f->vorbis);
+    if (f->mp3_aberto) drmp3_uninit(&f->mp3);
+    SDL_free(f->mp3_dados);
     SDL_free(f->wav);
     *f = (Fonte){0};
 }
@@ -94,6 +127,13 @@ static int le(Fonte *f, float *buf)
             }
             return (int)r * 2 * (int)sizeof(float);
         }
+        case FONTE_MP3: {
+            /* entrega no número de canais do arquivo (mono ou estéreo): o
+               SDL_AudioStream converte para estéreo junto com a taxa */
+            const int canais = (int)f->mp3.channels > 0 ? (int)f->mp3.channels : 1;
+            const drmp3_uint64 r = drmp3_read_pcm_frames_f32(&f->mp3, (drmp3_uint64)(LEITURA * 2 / canais), buf);
+            return (int)r * canais * (int)sizeof(float);
+        }
         case FONTE_WAV: {
             Uint32 n = f->wav_bytes - f->wav_pos;
             const Uint32 max = LEITURA * 2 * sizeof(float);
@@ -107,18 +147,94 @@ static int le(Fonte *f, float *buf)
     }
 }
 
-/* soma com saturação: as faixas foram feitas para tocar juntas, mas somadas
-   podem passar do limite do s16 */
-static void mistura(Sint16 *destino, const Sint16 *faixa, Sint64 amostras)
+/* ---------------------------------------------------------------------------
+ * A carga, em paralelo: cada thread pega a próxima faixa livre, decodifica
+ * inteira e soma no mix. O RK3326 tem 4 núcleos; uma música do Rock Band tem
+ * 7 faixas. A soma é em 32 bits (a ordem entre as threads varia, e assim o
+ * resultado é sempre o mesmo, sem cortar no meio); no fim, um corte só para
+ * 16 bits.
+ * ------------------------------------------------------------------------- */
+typedef struct {
+    Carregador   *c;
+    Fonte        *fontes;
+    int           n;
+    SDL_AtomicInt proxima;       /* próxima faixa sem dono */
+    SDL_AtomicInt feitos;        /* frames de saída prontos, somando todas as faixas */
+    Sint64        soma;          /* quantos frames ao todo (para o progresso) */
+    Sint32       *mix;
+    Sint64        total;
+    SDL_Mutex    *trava;         /* protege o mix e o fim */
+    Sint64        fim;           /* a faixa mais longa decodificada */
+    SDL_AtomicInt sem_memoria;
+} Trabalho;
+
+static void decodifica(Trabalho *t, Fonte *f, float *ler, Sint16 *conv)
 {
-    for (Sint64 i = 0; i < amostras; i++) {
-        const int v = destino[i] + faixa[i];
-        destino[i] = (Sint16)(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
+    const SDL_AudioSpec destino = { SDL_AUDIO_S16, AUDIO_CANAIS, AUDIO_TAXA };
+    SDL_AudioStream *s = SDL_CreateAudioStream(&f->spec, &destino);
+    Sint64 pos = 0;
+    bool acabou = false;
+
+    while (s && !acabou && !SDL_GetAtomicInt(&t->c->cancelar)) {
+        const int bytes = le(f, ler);
+        if (bytes > 0) SDL_PutAudioStreamData(s, ler, bytes);
+        else           { SDL_FlushAudioStream(s); acabou = true; }   /* fim (ou erro): esvazia */
+
+        int obtidos;
+        while ((obtidos = SDL_GetAudioStreamData(s, conv, SAIDA_MAX * AUDIO_CANAIS * (int)sizeof(Sint16))) > 0) {
+            Sint64 n = obtidos / (AUDIO_CANAIS * (Sint64)sizeof(Sint16));
+            if (pos + n > t->total) n = t->total - pos;
+            if (n <= 0) break;
+            /* somar é rápido perto de decodificar: uma trava só basta */
+            SDL_LockMutex(t->trava);
+            Sint32 *d = t->mix + pos * AUDIO_CANAIS;
+            for (Sint64 k = 0; k < n * AUDIO_CANAIS; k++) d[k] += conv[k];
+            SDL_UnlockMutex(t->trava);
+            pos += n;
+            const int feitos = SDL_AddAtomicInt(&t->feitos, (int)n) + (int)n;
+            SDL_SetAtomicInt(&t->c->progresso, (int)(1000 * (Sint64)feitos / (t->soma > 0 ? t->soma : 1)));
+        }
     }
+    SDL_DestroyAudioStream(s);
+
+    SDL_LockMutex(t->trava);
+    if (pos > t->fim) t->fim = pos;
+    SDL_UnlockMutex(t->trava);
+}
+
+static int SDLCALL operario(void *dado)
+{
+    Trabalho *t = dado;
+    float  *ler  = SDL_malloc(LEITURA * 2 * sizeof(float));
+    Sint16 *conv = SDL_malloc(SAIDA_MAX * AUDIO_CANAIS * sizeof(Sint16));
+    if (!ler || !conv) {
+        SDL_SetAtomicInt(&t->sem_memoria, 1);
+    } else {
+        for (;;) {
+            const int i = SDL_AddAtomicInt(&t->proxima, 1);   /* devolve o valor de antes: a faixa é minha */
+            if (i >= t->n || SDL_GetAtomicInt(&t->c->cancelar)) break;
+            decodifica(t, &t->fontes[i], ler, conv);
+        }
+    }
+    SDL_free(ler);
+    SDL_free(conv);
+    return 0;
+}
+
+/* quantas threads: uma por núcleo, sem passar do número de faixas
+   (ARKHERO_THREADS força um número, para medir) */
+static int quantas_threads(int faixas)
+{
+    int n = SDL_GetNumLogicalCPUCores();
+    const char *forcado = SDL_getenv("ARKHERO_THREADS");
+    if (forcado && *forcado) n = SDL_atoi(forcado);
+    if (n > faixas) n = faixas;
+    if (n > CARREGADOR_MAX_FAIXAS) n = CARREGADOR_MAX_FAIXAS;
+    return n < 1 ? 1 : n;
 }
 
 /* ---------------------------------------------------------------------------
- * A thread
+ * A thread da carga
  * ------------------------------------------------------------------------- */
 static void falha(Carregador *c, const char *fmt, const char *detalhe)
 {
@@ -131,7 +247,6 @@ static int SDLCALL trabalha(void *dado)
 {
     Carregador *c = dado;
     const Uint64 inicio = SDL_GetTicksNS();
-    const SDL_AudioSpec destino = { SDL_AUDIO_S16, AUDIO_CANAIS, AUDIO_TAXA };
 
     /* 1. abre todas as faixas para saber o tamanho final */
     Fonte  fontes[CARREGADOR_MAX_FAIXAS];
@@ -149,64 +264,57 @@ static int SDLCALL trabalha(void *dado)
     }
     if (abertas == 0) { falha(c, "nenhuma faixa de audio abriu (%s)", c->n ? c->arquivos[0] : "-"); return 0; }
 
-    const Sint64 total = maior + MARGEM;
-    Sint16 *mix  = SDL_calloc((size_t)total * AUDIO_CANAIS, sizeof(Sint16));
-    float  *ler  = SDL_malloc(LEITURA * 2 * sizeof(float));
-    Sint16 *conv = SDL_malloc(SAIDA_MAX * AUDIO_CANAIS * sizeof(Sint16));
-    if (!mix || !ler || !conv) {
-        SDL_free(mix); SDL_free(ler); SDL_free(conv);
+    /* 2. decodifica em paralelo, somando em 32 bits */
+    Trabalho t;
+    SDL_zero(t);
+    t.c      = c;
+    t.fontes = fontes;
+    t.n      = abertas;
+    t.soma   = soma;
+    t.total  = maior + MARGEM;
+    t.mix    = SDL_calloc((size_t)t.total * AUDIO_CANAIS, sizeof(Sint32));
+    t.trava  = SDL_CreateMutex();
+    if (!t.mix || !t.trava) {
+        SDL_free(t.mix);
+        SDL_DestroyMutex(t.trava);
         for (int i = 0; i < abertas; i++) fecha(&fontes[i]);
         falha(c, "sem memoria para %s", "a musica");
         return 0;
     }
 
-    /* 2. cada faixa: decodifica, converte para 48 kHz s16 e soma no mix */
-    Sint64 feitos = 0, fim = 0;
-    bool   cancelado = false;
-    for (int i = 0; i < abertas && !cancelado; i++) {
-        Fonte *f = &fontes[i];
-        SDL_AudioStream *s = SDL_CreateAudioStream(&f->spec, &destino);
-        Sint64 pos = 0;
-        bool acabou = false;
-
-        while (s && !acabou) {
-            if (SDL_GetAtomicInt(&c->cancelar)) { cancelado = true; break; }
-
-            const int bytes = le(f, ler);
-            if (bytes > 0) SDL_PutAudioStreamData(s, ler, bytes);
-            else           { SDL_FlushAudioStream(s); acabou = true; }   /* fim (ou erro): esvazia */
-
-            int obtidos;
-            while ((obtidos = SDL_GetAudioStreamData(s, conv, SAIDA_MAX * AUDIO_CANAIS * (int)sizeof(Sint16))) > 0) {
-                Sint64 n = obtidos / (AUDIO_CANAIS * (Sint64)sizeof(Sint16));
-                if (pos + n > total) n = total - pos;
-                if (n <= 0) break;
-                mistura(mix + pos * AUDIO_CANAIS, conv, n * AUDIO_CANAIS);
-                pos += n;
-            }
-            SDL_SetAtomicInt(&c->progresso, (int)(1000 * (feitos + pos) / (soma > 0 ? soma : 1)));
-        }
-        if (pos > fim) fim = pos;
-        feitos += pos;
-        SDL_DestroyAudioStream(s);
-        fecha(f);
+    const int n_threads = quantas_threads(abertas);
+    SDL_Thread *extras[CARREGADOR_MAX_FAIXAS];
+    int criadas = 0;
+    for (int i = 1; i < n_threads; i++) {   /* esta thread também trabalha: as outras são extras */
+        extras[criadas] = SDL_CreateThread(operario, "arkhero-faixa", &t);
+        if (extras[criadas]) criadas++;
     }
-    for (int i = 0; i < abertas; i++) fecha(&fontes[i]);   /* as que sobraram, se cancelou */
-    SDL_free(ler);
-    SDL_free(conv);
+    operario(&t);
+    for (int i = 0; i < criadas; i++) SDL_WaitThread(extras[i], NULL);
+    SDL_DestroyMutex(t.trava);
+    for (int i = 0; i < abertas; i++) fecha(&fontes[i]);
 
-    if (cancelado) {
-        SDL_free(mix);
-        falha(c, "%s", "carga cancelada");
+    if (SDL_GetAtomicInt(&c->cancelar) || SDL_GetAtomicInt(&t.sem_memoria)) {
+        SDL_free(t.mix);
+        falha(c, "%s", SDL_GetAtomicInt(&c->cancelar) ? "carga cancelada" : "sem memoria na carga");
         return 0;
     }
 
-    c->pcm.amostras = mix;
-    c->pcm.frames   = fim;
-    c->segundos     = (double)(SDL_GetTicksNS() - inicio) / 1e9;
+    /* 3. de 32 para 16 bits, no mesmo buffer: a amostra i (16 bits) é gravada
+       antes do ponto em que as próximas (32 bits) ainda vão ser lidas */
+    Sint16 *saida = (Sint16 *)t.mix;
+    for (Sint64 i = 0; i < t.fim * AUDIO_CANAIS; i++) {
+        const Sint32 v = t.mix[i];
+        saida[i] = (Sint16)(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
+    }
+    Sint16 *menor = SDL_realloc(saida, (size_t)(t.fim > 0 ? t.fim : 1) * AUDIO_CANAIS * sizeof(Sint16));
+
+    c->pcm.amostras   = menor ? menor : saida;
+    c->pcm.frames     = t.fim;
+    c->segundos       = (double)(SDL_GetTicksNS() - inicio) / 1e9;
     c->segundos_audio = (double)soma / AUDIO_TAXA;
-    SDL_Log("[carga] %d faixa(s), %.1f s de audio em %.2f s (%.0fx o tempo real)", abertas,
-            (double)fim / AUDIO_TAXA, c->segundos,
+    SDL_Log("[carga] %d faixa(s) em %d thread(s), %.1f s de audio em %.2f s (%.0fx o tempo real)", abertas,
+            criadas + 1, (double)t.fim / AUDIO_TAXA, c->segundos,
             c->segundos > 0 ? (double)soma / AUDIO_TAXA / c->segundos : 0.0);
     SDL_SetAtomicInt(&c->progresso, 1000);
     SDL_SetAtomicInt(&c->estado, CARGA_PRONTO);   /* por último: a partir daqui o main lê os campos */

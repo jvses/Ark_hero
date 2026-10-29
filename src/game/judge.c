@@ -2,10 +2,14 @@
  *
  *  - apertar o botão de um traste no tempo da nota já é tocar a nota;
  *    não existe palhetada. A janela é de ±100 ms, ou ±70 ms no modo precisão;
- *  - acorde: a nota é acertada quando todos os botões dela estão apertados,
- *    sendo o último apertado dentro da janela de tempo;
- *  - apertar um botão sem nota não é punido (como no modo controle do
- *    Clone Hero); o erro é deixar a nota passar;
+ *  - acorde: a nota é acertada quando os botões apertados são EXATAMENTE os
+ *    dela, sendo o último apertado dentro da janela. Um botão a mais (vermelho
+ *    + amarelo + azul num acorde vermelho + azul) erra o acorde. O botão de um
+ *    sustain ainda segurado não conta como "a mais";
+ *  - apertar um botão sem nota quebra o combo (opção "Penalidade", ligada
+ *    por padrão). Segurar um botão e apertar só o outro continua valendo para
+ *    acordes repetidos: o que vale é o botão NOVO estar na nota e os outros
+ *    estarem segurados;
  *  - sustain: depois de acertar a cabeça, segure os botões até o fim.
  *    Soltar antes não quebra o combo, só para de somar pontos.
  *
@@ -105,19 +109,64 @@ static int nota_do_traste(const Game *g, int f)
     return -1;
 }
 
+/* acorde de verdade (dois ou mais trastes; a aberta não é) */
+static bool acorde(const Nota *n)
+{
+    return !(n->flags & NOTA_ABERTA) && (n->mascara & (n->mascara - 1)) != 0;
+}
+
+/* os botões que estão segurando um sustain agora */
+static uint32_t sustentando(const Game *g)
+{
+    uint32_t m = 0;
+    for (int i = g->primeira_visivel; i < g->chart.n; i++) {
+        const Nota *n = &g->chart.notas[i];
+        if (n->t > g->t) break;
+        if (n->segurando) m |= (n->flags & NOTA_ABERTA) ? 0 : n->mascara;
+    }
+    return m;
+}
+
+/* apertou um botão sem nota nenhuma para ele */
+static void toque_errado(Game *g)
+{
+    g->combo = 0;
+    g->toques_errados++;
+    g->ultimo_julgamento_t = g->t;
+    g->ultimo_foi_erro     = true;
+    emite(g, EV_TOQUE_ERRADO, -1, 0.0);
+}
+
 void Judge_toques(Game *g, uint32_t apertados, uint32_t segurados)
 {
     const uint32_t novos = apertados & ACAO_BITS_TRASTES;
     /* "segurados" vem do estado do frame; um toque mais curto que um frame só
        aparece em "apertados", por isso os dois juntos */
     const uint32_t firmes = (segurados | apertados) & ACAO_BITS_TRASTES;
+    /* para os acordes: o que está apertado, sem os botões de sustains em curso */
+    const uint32_t livres = firmes & ~sustentando(g);
+    uint32_t usados = 0;     /* botões que já serviram a um acerto neste frame */
+    bool     punido = false; /* no máximo uma penalidade por frame */
 
     for (int f = 0; f < ACAO_N_TRASTES; f++) {
-        if (!(novos & (1u << f))) continue;
+        if (!(novos & (1u << f)) || (usados & (1u << f))) continue;
         const int i = nota_do_traste(g, f);
-        if (i < 0) continue;   /* aperto sem nota: sem punição */
-
-        if (firme(&g->chart.notas[i], firmes)) acerta(g, i);   /* acorde completo (ou nota simples) */
+        if (i < 0) {                                    /* nenhuma nota para este botão */
+            if (g->opcoes.penalidade && !punido) { toque_errado(g); punido = true; }
+            continue;
+        }
+        const Nota *n = &g->chart.notas[i];
+        if (acorde(n) && (livres & ~n->mascara)) {      /* acorde com botão a mais: errou o acorde */
+            if (g->opcoes.penalidade && !punido) { toque_errado(g); punido = true; }
+            usados |= novos;                            /* este frame não acerta mais nada */
+            continue;
+        }
+        if (firme(n, firmes)) {                         /* acorde completo (ou nota simples) */
+            acerta(g, i);
+            /* os outros botões do acorde, apertados junto, já foram usados aqui:
+               não procuram outra nota nem contam como erro */
+            usados |= (n->flags & NOTA_ABERTA) ? ACAO_BITS_TRASTES : n->mascara;
+        }
         /* senão: acorde pela metade; o próximo botão apertado completa */
     }
 }

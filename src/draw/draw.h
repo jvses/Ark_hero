@@ -41,6 +41,7 @@ typedef struct {
     const char *tecla[ACAO_N];          /* rótulo da tecla de cada ação: "A" */
     const char *ultimo;                 /* último botão apertado (diagnóstico) */
     const char *analogico;              /* analógico do whammy: "Esquerdo" / "Direito" */
+    const char *frontais;               /* estilo dos botões frontais: "Auto (Nintendo)"... */
     HudAudio    audio;
     bool        procurando;             /* varredura das pastas de música em andamento */
     int         achadas;                /* músicas achadas até agora */

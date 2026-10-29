@@ -28,6 +28,35 @@ if [ -d "$ROOT/assets" ]; then
     echo "++ incluido assets/ ($(du -sh "$PORT/assets" | cut -f1))"
 fi
 
+# 1c) licencas das bibliotecas que vao no pacote. As da Xiph (BSD) EXIGEM o
+#     aviso de copyright junto do binario; as outras vao por cortesia.
+LIC="$PORT/licencas"
+mkdir -p "$LIC"
+for par in "SDL3:LICENSE.txt" "libogg:COPYING" "libvorbis:COPYING" "opus:COPYING" "opusfile:COPYING"; do
+    nome="${par%%:*}"; arquivo="${par#*:}"
+    tarball="$(ls -1 "$ROOT"/third_party/src/"$nome"-*.tar.gz 2>/dev/null | head -1)"
+    [ -f "$tarball" ] || { echo "ERRO: $nome-*.tar.gz nao encontrado (licenca)"; exit 1; }
+    pasta="$(basename "$tarball" .tar.gz)"
+    tar xzf "$tarball" -O "$pasta/$arquivo" > "$LIC/$pasta.txt"
+done
+cp "$ROOT/third_party/dr_libs/README.md" "$LIC/dr_mp3.txt"
+sed -n '/^This software is available as a choice/,$p' "$ROOT/third_party/dr_libs/dr_mp3.h" >> "$LIC/dr_mp3.txt"
+echo "++ incluido licencas/ ($(ls "$LIC" | wc -l) arquivos)"
+
+# 1d) a pasta das musicas, com um aviso (o jogo e distribuido sem musicas)
+mkdir -p "$PORT/songs"
+cat > "$PORT/songs/COLOQUE_AS_MUSICAS_AQUI.txt" <<'TXT'
+Ark Hero - musicas
+
+Coloque aqui as pastas de musica no formato do Clone Hero: uma pasta por
+musica, com notes.chart ou notes.mid, song.ini e o audio (ogg, opus, mp3 ou
+wav). Pode organizar em subpastas (por jogo, estilo...): a lista do jogo
+segue as subpastas.
+
+Para usar uma biblioteca que ja esta em outro lugar do cartao, escreva o
+caminho da pasta, um por linha, em conf/arkhero/pastas.txt.
+TXT
+
 # 2) binarios + libs, por arquitetura
 FOUND=0
 for ARCH in aarch64 x86_64; do

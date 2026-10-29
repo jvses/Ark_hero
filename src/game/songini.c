@@ -69,6 +69,7 @@ bool SongIni_parse(const char *texto, size_t tamanho, SongIni *s)
                  chave_igual(ck, nk, "frets"))       copia_sem_tags(s->charter, sizeof(s->charter), va, nv);
         else if (chave_igual(ck, nk, "delay"))       s->atraso_ms  = atoi(numero);
         else if (chave_igual(ck, nk, "song_length")) s->duracao_ms = atoi(numero);
+        else if (chave_igual(ck, nk, "multiplier_note")) s->nota_sp = atoi(numero);
         else continue;
         achou = true;
     }

@@ -21,9 +21,18 @@
 
 #define INPUT_CAPTURA_SEGUNDOS 5   /* tempo para apertar o botão novo */
 
+/* Os botões frontais são guardados pela POSIÇÃO física (sul = o de baixo,
+ * leste = o da direita...), com os valores SDL_GAMEPAD_BUTTON_SOUTH/EAST/WEST/
+ * NORTH. A SDL nomeia pela posição num controle de Xbox, mas alguns
+ * mapeamentos (o do R36S no PortMaster) nomeiam pela LETRA impressa, no
+ * padrão Nintendo, e aí o "b" da SDL é o botão de baixo. O input desfaz isso
+ * (Input.trocado), para "sul" ser o botão de baixo em qualquer aparelho. */
+enum { FRONTAIS_AUTO, FRONTAIS_XBOX, FRONTAIS_NINTENDO, FRONTAIS_N };
+
 typedef struct {
     int          pad;     /* botão físico do controle, ou INPUT_FISICO_NENHUM */
     SDL_Scancode tecla;   /* SDL_SCANCODE_UNKNOWN = nenhuma */
+    bool         cru;     /* veio de um controles.cfg antigo, com nome da SDL: converte ao conectar */
 } Mapeamento;
 
 typedef struct {
@@ -37,6 +46,8 @@ typedef struct {
 
     /* analógico: para os lados = whammy; empurrão forte para cima = star power */
     int            analogico;         /* 0 = esquerdo, 1 = direito */
+    int            frontais;          /* FRONTAIS_AUTO / _XBOX / _NINTENDO */
+    bool           trocado;           /* o controle conectado nomeia os frontais pela letra (Nintendo) */
     Sint16         eixo[SDL_GAMEPAD_AXIS_COUNT];
     bool           alavanca_cima;     /* o empurrão para cima está valendo? (histerese) */
 
@@ -57,10 +68,12 @@ void   Input_capture_start(Input *inp, Acao a);   /* o próximo botão/tecla vir
 double Input_capture_left(const Input *inp);      /* segundos restantes, 0 se não está capturando */
 void   Input_reset_defaults(Input *inp);          /* volta ao padrão e salva */
 void   Input_toggle_stick(Input *inp);            /* troca o analógico do whammy e salva */
+void   Input_cycle_layout(Input *inp);            /* botões frontais: automático / Xbox / Nintendo */
 
 /* Nomes para mostrar na tela: "L1", "R2", "B"... e "A", "Return"... */
 const char *Input_pad_label(const Input *inp, Acao a);
 const char *Input_key_label(const Input *inp, Acao a);
 const char *Input_stick_label(const Input *inp);   /* "Esquerdo" / "Direito" */
+const char *Input_layout_label(const Input *inp);  /* "Auto (Nintendo)"... */
 
 #endif

@@ -52,11 +52,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # game/ nao usa a SDL: entra no jogo e tambem no teste, que compila sem ela
 set(ARKHERO_GAME_SRC
     src/game/acao.c
+    src/game/biblioteca.c
     src/game/chart.c
     src/game/chartfile.c
     src/game/game.c
     src/game/judge.c
     src/game/menu.c
+    src/game/midifile.c
+    src/game/opcoes.c
     src/game/score.c
     src/game/songini.c
 )
@@ -75,6 +78,9 @@ add_executable(arkhero
 )
 
 target_include_directories(arkhero PRIVATE src)
+# dr_mp3.h (um arquivo so; a implementacao entra no carregador.c). SYSTEM: os
+# avisos de dentro dele nao sao do jogo
+target_include_directories(arkhero SYSTEM PRIVATE third_party/dr_libs)
 
 target_link_libraries(arkhero PRIVATE SDL3::SDL3)
 if(ARKHERO_AUDIO_STATIC)

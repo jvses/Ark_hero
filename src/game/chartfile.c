@@ -1,6 +1,7 @@
 #include "game/chartfile.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,7 @@
 #define RESOLUCAO_PADRAO 192
 #define BPM_PADRAO       120.0
 #define PREPARACAO       2.5    /* segundos de pista antes da primeira nota */
+#define HOPO_LIMIAR      (65.0 / 192.0)   /* até essa fração de batida da anterior, vira HOPO */
 
 static const char *const SECAO_DIF[DIF_N] = {
     [DIF_FACIL]   = "EasySingle",
@@ -88,12 +90,9 @@ static bool linha_sync(ArquivoChart *a, const char *p, const char *fim)
     if (!evento(p, fim, &tick, tipo, &x, &y)) return true;
 
     if (strcmp(tipo, "B") == 0 && x > 0) {
-        if (!cresce((void **)&a->tempos, &a->cap_tempos, a->n_tempos, sizeof(SegmentoTempo))) return false;
-        /* por enquanto guarda o BPM*1000 em seg_por_tick; monta_mapa converte */
-        a->tempos[a->n_tempos++] = (SegmentoTempo){ tick, 0.0, (double)x };
+        return ChartFile_add_tempo(a, tick, x / 1000.0);              /* "B 120000" = 120 BPM */
     } else if (strcmp(tipo, "TS") == 0 && x > 0) {
-        if (!cresce((void **)&a->compassos, &a->cap_compassos, a->n_compassos, sizeof(Compasso))) return false;
-        a->compassos[a->n_compassos++] = (Compasso){ tick, (int)x, y >= 0 ? 1 << y : 4 };   /* "TS 6 3" = 6/8 */
+        return ChartFile_add_compasso(a, tick, (int)x, y >= 0 ? 1 << y : 4);   /* "TS 6 3" = 6/8 */
     }
     return true;   /* "A" (âncora) e o resto: ignorados */
 }
@@ -106,11 +105,9 @@ static bool linha_dif(Pista_Dif *d, const char *p, const char *fim)
     if (!evento(p, fim, &tick, tipo, &x, &y)) return true;
 
     if (strcmp(tipo, "N") == 0 && x >= 0 && x <= 7) {
-        if (!cresce((void **)&d->notas, &d->cap_notas, d->n_notas, sizeof(NotaBruta))) return false;
-        d->notas[d->n_notas++] = (NotaBruta){ tick, y > 0 ? (uint32_t)y : 0, (uint8_t)x };
+        return ChartFile_add_nota(d, tick, y > 0 ? (uint32_t)y : 0, (int)x);
     } else if (strcmp(tipo, "S") == 0 && x == 2) {   /* S 2 = star power (S 64 é da bateria) */
-        if (!cresce((void **)&d->frases, &d->cap_frases, d->n_frases, sizeof(FraseBruta))) return false;
-        d->frases[d->n_frases++] = (FraseBruta){ tick, y > 0 ? (uint32_t)y : 0 };
+        return ChartFile_add_frase(d, tick, y > 0 ? (uint32_t)y : 0);
     }
     return true;   /* "E" (eventos locais, solos): ignorados por enquanto */
 }
@@ -133,10 +130,11 @@ static int compara_compasso(const void *x, const void *y)
 /* converte os BPMs lidos em segmentos (tick, segundos, segundos por tick) */
 static bool monta_mapa(ArquivoChart *a)
 {
-    qsort(a->tempos, (size_t)a->n_tempos, sizeof(SegmentoTempo), compara_tempo);
+    /* qsort/memmove com ponteiro nulo é comportamento indefinido, mesmo com 0 itens */
+    if (a->n_tempos > 0) qsort(a->tempos, (size_t)a->n_tempos, sizeof(SegmentoTempo), compara_tempo);
     if (a->n_tempos == 0 || a->tempos[0].tick != 0) {   /* sem BPM no tick 0: 120 */
         if (!cresce((void **)&a->tempos, &a->cap_tempos, a->n_tempos, sizeof(SegmentoTempo))) return false;
-        memmove(a->tempos + 1, a->tempos, sizeof(SegmentoTempo) * (size_t)a->n_tempos);
+        if (a->n_tempos > 0) memmove(a->tempos + 1, a->tempos, sizeof(SegmentoTempo) * (size_t)a->n_tempos);
         a->tempos[0] = (SegmentoTempo){ 0, 0.0, BPM_PADRAO * 1000.0 };
         a->n_tempos++;
     }
@@ -148,7 +146,7 @@ static bool monta_mapa(ArquivoChart *a)
         s->t            = t;
         s->seg_por_tick = 60.0 / (bpm * a->resolucao);
     }
-    qsort(a->compassos, (size_t)a->n_compassos, sizeof(Compasso), compara_compasso);
+    if (a->n_compassos > 0) qsort(a->compassos, (size_t)a->n_compassos, sizeof(Compasso), compara_compasso);
     return true;
 }
 
@@ -181,8 +179,8 @@ static int compara_frase(const void *x, const void *y)
 /* notas e frases em ordem de tempo (o arquivo quase sempre já vem assim) */
 static void ordena(Pista_Dif *d)
 {
-    qsort(d->notas, (size_t)d->n_notas, sizeof(NotaBruta), compara_nota);
-    qsort(d->frases, (size_t)d->n_frases, sizeof(FraseBruta), compara_frase);
+    if (d->n_notas > 0)  qsort(d->notas, (size_t)d->n_notas, sizeof(NotaBruta), compara_nota);
+    if (d->n_frases > 0) qsort(d->frases, (size_t)d->n_frases, sizeof(FraseBruta), compara_frase);
 }
 
 /* ---------------------------------------------------------------------------
@@ -240,6 +238,46 @@ bool ChartFile_parse(ArquivoChart *a, const char *texto, size_t tamanho, char *e
         return false;
     }
     if (a->resolucao <= 0) a->resolucao = RESOLUCAO_PADRAO;
+    a->corte_sustain = (uint32_t)(a->resolucao / 4);   /* .chart: sustains explícitos; corta só os mínimos */
+    return ChartFile_finish(a, erro, n_erro);
+}
+
+/* ---------------------------------------------------------------------------
+ * Para os leitores de formato
+ * ------------------------------------------------------------------------- */
+bool ChartFile_add_tempo(ArquivoChart *a, uint32_t tick, double bpm)
+{
+    if (bpm <= 0.0 || !cresce((void **)&a->tempos, &a->cap_tempos, a->n_tempos, sizeof(SegmentoTempo))) return bpm <= 0.0;
+    /* por enquanto guarda o BPM*1000 em seg_por_tick; monta_mapa converte */
+    a->tempos[a->n_tempos++] = (SegmentoTempo){ tick, 0.0, bpm * 1000.0 };
+    return true;
+}
+
+bool ChartFile_add_compasso(ArquivoChart *a, uint32_t tick, int num, int den)
+{
+    if (!cresce((void **)&a->compassos, &a->cap_compassos, a->n_compassos, sizeof(Compasso))) return false;
+    a->compassos[a->n_compassos++] = (Compasso){ tick, num, den };
+    return true;
+}
+
+bool ChartFile_add_nota(Pista_Dif *d, uint32_t tick, uint32_t duracao, int traste)
+{
+    if (!cresce((void **)&d->notas, &d->cap_notas, d->n_notas, sizeof(NotaBruta))) return false;
+    d->notas[d->n_notas++] = (NotaBruta){ tick, duracao, (uint8_t)traste };
+    return true;
+}
+
+bool ChartFile_add_frase(Pista_Dif *d, uint32_t tick, uint32_t duracao)
+{
+    if (!cresce((void **)&d->frases, &d->cap_frases, d->n_frases, sizeof(FraseBruta))) return false;
+    d->frases[d->n_frases++] = (FraseBruta){ tick, duracao };
+    return true;
+}
+
+bool ChartFile_finish(ArquivoChart *a, char *erro, size_t n_erro)
+{
+    if (a->resolucao <= 0) a->resolucao = RESOLUCAO_PADRAO;
+    if (a->corte_sustain == 0) a->corte_sustain = (uint32_t)(a->resolucao / 4);
     if (!monta_mapa(a)) {
         snprintf(erro, n_erro, "sem memoria no mapa de tempo");
         ChartFile_free(a);
@@ -249,7 +287,7 @@ bool ChartFile_parse(ArquivoChart *a, const char *texto, size_t tamanho, char *e
     bool alguma = false;
     for (int d = 0; d < DIF_N; d++) {
         ordena(&a->dif[d]);
-        alguma |= a->dif[d].n_notas > 0;
+        alguma |= ChartFile_contar(a, (Dificuldade)d) > 0;
     }
     if (!alguma) {
         snprintf(erro, n_erro, "o chart nao tem notas de guitarra");
@@ -270,12 +308,24 @@ void ChartFile_free(ArquivoChart *a)
     memset(a, 0, sizeof(*a));
 }
 
+static bool e_nota(const NotaBruta *b)
+{
+    return b->traste <= 4 || b->traste == BRUTA_ABERTA;
+}
+
+/* quantos ticks com nota de verdade (um acorde conta uma; marcadores sozinhos não) */
 int ChartFile_contar(const ArquivoChart *a, Dificuldade d)
 {
     const Pista_Dif *p = &a->dif[d];
     int n = 0;
-    for (int i = 0; i < p->n_notas; i++)
-        if (i == 0 || p->notas[i].tick != p->notas[i - 1].tick) n++;   /* um acorde conta uma */
+    uint32_t ultimo = 0;
+    bool algum = false;
+    for (int i = 0; i < p->n_notas; i++) {
+        if (!e_nota(&p->notas[i])) continue;
+        if (!algum || p->notas[i].tick != ultimo) n++;
+        ultimo = p->notas[i].tick;
+        algum  = true;
+    }
     return n;
 }
 
@@ -289,15 +339,48 @@ bool Chart_from_file(Chart *c, const ArquivoChart *a, Dificuldade d, double atra
     c->notas = calloc((size_t)n, sizeof(Nota));
     if (!c->notas) return false;
 
-    /* sustains mais curtos que uma semicolcheia viram nota simples */
-    const uint32_t corte = (uint32_t)(a->resolucao / 4);
+    const uint32_t corte = a->corte_sustain;
+    const uint32_t limiar_hopo = (uint32_t)(a->resolucao * HOPO_LIMIAR + 0.5);
     const double desloca = a->offset + atraso_s;
     int k = -1, fr = 0;
 
-    for (int i = 0; i < p->n_notas; i++) {
+    /* marcadores do tick atual (valem para a nota daquele tick) */
+    bool inverte = false, forca_hopo = false, forca_palheta = false;
+    uint32_t tick_nota[2] = { 0, 0 };   /* [0] = da nota k, [1] = da anterior */
+    uint8_t  mascara_ant = 0;
+
+    for (int i = 0; i <= p->n_notas; i++) {
+        const bool fim_tick = i == p->n_notas || (i > 0 && p->notas[i].tick != p->notas[i - 1].tick);
+
+        /* fechou o tick da nota k: decide se ela é HOPO */
+        if (fim_tick && k >= 0 && tick_nota[0] == p->notas[i - 1].tick) {
+            Nota *nt = &c->notas[k];
+            if (nt->mascara) nt->flags &= (uint8_t)~NOTA_ABERTA;   /* aberta junto com traste: vale o acorde */
+            const uint8_t m = (nt->flags & NOTA_ABERTA) ? 0x20 : nt->mascara;
+            const bool acorde = (m & (m - 1)) != 0;
+            /* HOPO natural: nota simples, perto da anterior e de cor diferente */
+            bool hopo = k > 0 && !acorde && (mascara_ant & m) == 0 && tick_nota[0] - tick_nota[1] <= limiar_hopo;
+            if (inverte)       hopo = !hopo;
+            if (forca_hopo)    hopo = true;
+            if (forca_palheta) hopo = false;
+            if (hopo) nt->flags |= NOTA_HOPO;
+            mascara_ant = m;
+        }
+        if (fim_tick) inverte = forca_hopo = forca_palheta = false;   /* marcador sem nota não vaza */
+        if (i == p->n_notas) break;
+
         const NotaBruta *b = &p->notas[i];
-        if (i == 0 || b->tick != p->notas[i - 1].tick) {   /* tick novo: nota nova */
+        if (!e_nota(b)) {   /* marcador: vale para a nota do mesmo tick */
+            if (b->traste == BRUTA_INVERTE_HOPO)  inverte = true;
+            if (b->traste == BRUTA_FORCA_HOPO)    forca_hopo = true;
+            if (b->traste == BRUTA_FORCA_PALHETA) forca_palheta = true;
+            if (b->traste == BRUTA_TAP && k >= 0 && tick_nota[0] == b->tick) c->notas[k].flags |= NOTA_TAP;
+            continue;
+        }
+        if (k < 0 || b->tick != tick_nota[0]) {   /* tick novo: nota nova */
             k++;
+            tick_nota[1] = tick_nota[0];
+            tick_nota[0] = b->tick;
             c->notas[k].t = ChartFile_tempo(a, b->tick) + desloca;
 
             /* frase de star power que contém este tick */
@@ -308,21 +391,25 @@ bool Chart_from_file(Chart *c, const ArquivoChart *a, Dificuldade d, double atra
             }
         }
         Nota *nt = &c->notas[k];
-        if (b->traste <= 4)      nt->mascara |= (uint8_t)(1u << b->traste);
-        else if (b->traste == 5) nt->flags   |= NOTA_FORCADA;
-        else if (b->traste == 6) nt->flags   |= NOTA_TAP;
-        else if (b->traste == 7) nt->flags   |= NOTA_ABERTA;
+        if (b->traste <= 4) nt->mascara |= (uint8_t)(1u << b->traste);
+        else                nt->flags   |= NOTA_ABERTA;
 
-        if ((b->traste <= 4 || b->traste == 7) && b->duracao >= corte) {
+        if (b->duracao >= corte) {
             const double dur = ChartFile_tempo(a, b->tick + b->duracao) - ChartFile_tempo(a, b->tick);
             if (dur > nt->duracao) nt->duracao = dur;   /* acorde: o sustain mais longo */
         }
     }
     c->n = n;
 
-    /* aberta junto com trastes é um erro do chart: vale o acorde */
-    for (int i = 0; i < c->n; i++)
-        if (c->notas[i].mascara) c->notas[i].flags &= (uint8_t)~NOTA_ABERTA;
+    /* marcadores que vêm ANTES da nota no mesmo tick (a ordenação põe 0..4 antes
+       de 5..9, mas um tap no tick de uma aberta chega depois): uma segunda
+       passada aplica os taps que ficaram para trás */
+    for (int i = 0, j = 0; i < p->n_notas && j < c->n; i++) {
+        const NotaBruta *b = &p->notas[i];
+        if (b->traste != BRUTA_TAP) continue;
+        while (j < c->n && ChartFile_tempo(a, b->tick) + desloca > c->notas[j].t + 1e-9) j++;
+        if (j < c->n && fabs(ChartFile_tempo(a, b->tick) + desloca - c->notas[j].t) < 1e-9) c->notas[j].flags |= NOTA_TAP;
+    }
 
     c->fim = 0.0;
     for (int i = 0; i < c->n; i++)

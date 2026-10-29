@@ -13,7 +13,10 @@ a direção do João. Cada etapa é testada no R36S antes do commit.
 | 2 | Áudio: Opus, Vorbis e WAV, mistura das faixas, relógio mestre | feita, testada no PC (commit `31548dd`); falta o R36S |
 | 3 | Parser de `.chart` + mapa de tempo + testes | feita e jogada no PC; falta o R36S |
 | 4 | Pista com as notas de uma música de verdade, escolha de música e dificuldade | feita junto com a 3 |
-| 4b | Ajustes: janela de acerto, modo precisão, logs, procura de músicas, navegação, placar | **feita; falta testar** |
+| 4b | Ajustes: janela de acerto, modo precisão, logs, procura de músicas, navegação, placar | feita e jogada no PC (teclado) |
+| 4c | Recordes, organizar por pastas/título/artista, opções salvas | feita, testada no PC e no R36S |
+| 4d | `.mid` e MP3, HOPO na pista, penalidade, ajuste de tempo, botões frontais por posição | feita, testada no R36S |
+| 4e | Carga em paralelo, acorde exato, licenças e pasta `songs/` no pacote | **feita; falta testar** |
 | 5 | Lua: `config.lua` e `regras.lua`, com recarga a quente | |
 | 6 | Calibração de áudio e vídeo | |
 | 7 | Biblioteca de músicas + cache | |
@@ -499,3 +502,293 @@ Do `ports/arkhero/log.txt`, depois de jogar uma música inteira:
 2. as linhas `[audio]` e `[carga] ... em X s (Nx o tempo real)`;
 3. as duas linhas `[partida]` do fim (erro médio, frames lentos, saltos);
 4. as linhas `[video] fps`.
+
+---
+
+## Etapa 4c: recordes, organização da lista, opções salvas (2026-10-28)
+
+### Pedido
+
+- Salvar o recorde de pontuação de cada música (a maior, em qualquer
+  dificuldade).
+- Músicas em subpastas da pasta de músicas, para o jogador organizar por
+  jogo de origem, estilo etc.; e sugestões de como organizar a lista.
+- Uma revisão do que falta para completar o jogo, e o que a Lua poderia
+  permitir como mods.
+
+### O que foi feito
+
+**Recordes** (`game/biblioteca.c` + `main.c`):
+- no fim da partida, se os pontos passaram do recorde da música, ele é
+  atualizado e gravado em `recordes.txt` (ao lado do `controles.cfg`);
+- guarda os pontos, a dificuldade em que foram feitos, a porcentagem e se
+  foi full combo; a demonstração não conta;
+- a chave é **título/artista/charter** (do `song.ini`), e não a pasta:
+  reorganizar as pastas não perde os recordes;
+- aparece embaixo da lista de músicas (em amarelo) e na tela de fim
+  ("NOVO RECORDE!", com o anterior).
+
+**Organizar a lista**: o primeiro item da lista de músicas é
+"Organizar por", com Esq/Dir:
+- **Pastas** (o padrão): a lista segue as subpastas. `[Guitar Hero 3]  25`
+  é uma pasta com 25 músicas dentro (contando as sub-subpastas); entrar
+  mostra o que tem nela; Voltar sobe uma pasta e deixa selecionada a
+  pasta de onde saiu;
+- **Título**: todas as músicas, de A a Z;
+- **Artista**: todas, por artista ("Artista - Título").
+
+**Opções salvas**: velocidade, modo precisão, canhoto, FPS, volume e o
+modo de organizar vão para `opcoes.cfg`, ao sair das Configurações (e ao
+trocar o modo de organizar). A conversão está em `game/opcoes.c` (sem SDL,
+com teste); valor estranho no arquivo é limitado à faixa válida.
+
+**Bug latente corrigido**: com mais de 1000 músicas, os ids delas
+invadiriam a faixa das dificuldades. As faixas foram reordenadas (a das
+músicas, sem limite, é a última) e o código usa `Game_item_musica()`,
+`Game_item_pasta()` e `Game_item_acao()` em vez de comparar ids à mão.
+
+**Testes**: 26 no `test_game` (novos: pastas e subpastas, voltar para a
+pasta certa, modo por artista, recorde novo e recorde mantido, opções em
+texto). Zero avisos no PC e no container.
+
+---
+
+## O que falta (revisão de 2026-10-28)
+
+**Antes de tudo: o R36S.** Desempenho (as notas são desenhadas com
+geometria calculada na CPU a cada frame; num Cortex-A35 isso pode pesar
+com muitas notas na tela), tempo de carga do Opus, atraso do áudio, e o
+botão A/B. Os logs da etapa 4b foram feitos para isso.
+
+**Para jogar qualquer biblioteca do Clone Hero:**
+1. `notes.mid` (muitas músicas só têm ele) e depois `.sng`;
+2. MP3 (`dr_mp3`, um arquivo só);
+3. cache da biblioteca (com milhares de músicas num cartão SD, a procura e
+   a leitura dos `song.ini` a cada abertura vão pesar);
+4. nomes com acento/japonês (hoje viram `?`): fonte TrueType (SDL_ttf),
+   pelo menos na lista de músicas.
+
+**Para a partida ficar completa:**
+5. calibração do atraso de áudio e de vídeo (etapa 6);
+6. som de erro e silenciar a guitarra quando erra (precisa mixar a faixa
+   da guitarra separada das outras);
+7. estrelas por música (1 a 5, pela pontuação), como no Clone Hero;
+8. barra de rock / falha (hoje não dá para perder a música);
+9. modo treino: começar numa seção (as seções do `[Events]` já estão no
+   chart) e tocar mais devagar;
+10. prévia da música ao passar pela lista.
+
+**Controles:** modo guitarra (palhetada, HOPO e tap: as flags já são
+lidas), guitarras USB, navegação dos menus pelo analógico.
+
+**Distribuição:** `port.json` completo, imagens e descrição para o
+PortMaster, build x86_64, licenças das bibliotecas no pacote.
+
+**Lua:** ainda não começou (ver a proposta de usos na conversa da etapa 4c).
+
+---
+
+## Etapa 4d: o que o teste no R36S mostrou (2026-10-28)
+
+### Pedido (depois do teste no R36S: roda liso, sem queda de FPS)
+
+1. Diferenciar as notas que precisam de palhetada das que não precisam:
+   as comuns com o miolo preto e o centro branco; as especiais como estão.
+2. Penalidade por apertar sem nota (zerar combo e multiplicador), mantendo
+   o "segurar uma e apertar a outra" nos acordes repetidos.
+3. As músicas em MP3 não apareciam (e a do Rascal Flatts, em Opus, também não).
+4. Confirmar/voltar trocavam de lugar entre o controle do PC e o R36S
+   (usar a linguagem dos pontos cardeais: sul, leste, oeste, norte).
+5. "Perfeito / Bom / Errou" como opção (poluem a pista).
+6. Não dava para trocar o analógico do whammy.
+
+### O que os logs mostraram
+
+- A causa do item 3 não era só o MP3: o log dizia "75 so com notes.mid".
+  O pacote do GH3 é **.mid + MP3** e o Rascal Flatts é **.mid + Opus**.
+- O `GO-Super Gamepad` do R36S tem `a:b1,b:b0` no mapeamento: o PortMaster
+  nomeia os frontais pela letra impressa (estilo Nintendo). No controle de
+  Xbox do PC é pela posição (`a:b0,b:b1`). Por isso o mesmo "b" da SDL era
+  o botão de baixo num e o da direita no outro.
+- Erro médio dos acertos: -48 ms no R36S, -22 a -27 ms no PC (o jogador
+  aperta adiantado em relação ao relógio do jogo).
+- Carga da música de teste no R36S: 14,8 s (52x o tempo real); no PC, 2,4 s.
+
+### O que foi feito
+
+**Leitor de `.mid`** (`game/midifile.c`, sem SDL): trilha `PART GUITAR`
+(ou `T1 GEMS`), as quatro dificuldades, forçar HOPO / palhetada, star power
+(116, ou o `multiplier_note` do song.ini), tap (104 e SysEx do Phase Shift),
+abertas (`[ENHANCED_OPENS]` e SysEx), andamento e compasso. Lê com limite
+(arquivo cortado não lê fora). Conferido nos 77 MIDI da pasta de teste:
+número de notas do Expert idêntico ao de um leitor independente em Python
+nos 77, todas as músicas com star power, as notas terminando antes do fim
+do áudio; o pior arquivo levou 15,7 ms no PC. 40 arquivos estragados de
+propósito (cortados, bytes trocados) passaram pelo AddressSanitizer sem
+nenhum erro.
+
+**MP3** (`third_party/dr_libs/dr_mp3.h`, domínio público, um arquivo só,
+versão fixada por commit e SHA256): entra no carregador junto com Opus,
+Vorbis e WAV. A música do GH3 (3 faixas MP3) deu 296,47 s, igual ao ffprobe.
+
+**HOPO na pista:** o `Chart_from_file` calcula o HOPO como o Clone Hero
+(nota simples, de cor diferente, até 65/192 de batida da anterior; acorde
+nunca), com os marcadores do arquivo por cima (.chart "N 5" inverte; .mid
+força HOPO ou palhetada). Notas de palhetada: miolo preto, centro branco.
+HOPO e tap: como antes. 26% das notas do Expert do GH3 são HOPO.
+
+**Penalidade** (opção "Penalidade (erro)", ligada): apertar um botão sem
+nota para ele quebra o combo (e o multiplicador, que vem do combo). O
+acorde apertado com os botões juntos não pune o segundo botão, nem o deixa
+pegar a nota seguinte (bug que existia antes e foi corrigido junto);
+segurar um botão e apertar o outro continua acertando acordes repetidos.
+
+**Ajuste de tempo** (troca o "Calibrar atraso (em breve)"): -300 a +300 ms,
+de 5 em 5. Desloca o relógio do áudio. A tela de fim mostra o erro médio e
+sugere o valor (pelo log do R36S, algo como **+45 ms** lá; no PC, +25 ms).
+
+**Botões frontais por posição:** o jogo guarda e mostra **Sul, Leste,
+Oeste, Norte**. Ao conectar o controle, detecta se ele é do estilo Nintendo
+(pela lista de nomes conhecidos, ou pelo `a:b1,b:b0` no mapeamento) e
+desfaz a troca. Confirmar = Sul e voltar = Leste em qualquer controle.
+Controles > "Botões frontais" força Xbox ou Nintendo se a detecção errar.
+O `controles.cfg` antigo (com "a"/"b") é convertido ao conectar o controle
+e regravado com os nomes novos.
+
+**Whammy:** na captura do Whammy, mexer um analógico escolhe esse
+analógico. Mexer um analógico também aparece no "último botão apertado".
+
+**"Mostrar acertos"**: opção, desligada por padrão.
+
+**Testes:** 30 no `test_game` (novos: penalidade, acorde apertado junto,
+acordes repetidos, opção desligada, ajuste de tempo, HOPO no .chart, e um
+MIDI montado byte a byte com mudança de andamento, HOPO natural, palhetada
+forçada, sustain e star power). Limpos também com AddressSanitizer e UBSan
+(que apontaram `qsort` com lista vazia: corrigido).
+
+### Como testar
+
+- [ ] a lista mostra as ~78 músicas (GH3, Rascal Flatts, Mac DeMarco, Cliffs)
+- [ ] músicas do GH3 (MIDI + MP3) carregam e tocam no tempo
+- [ ] notas de palhetada com o miolo preto; HOPOs coloridos
+- [ ] apertar sem nota quebra o combo; acordes repetidos segurando um botão
+- [ ] no R36S e no PC: confirmar no botão de baixo, voltar no da direita
+- [ ] Ajuste de tempo: usar a sugestão da tela de fim e ver o erro médio cair
+- [ ] Controles > Whammy: mexer o analógico direito; o whammy passa para ele
+- [ ] tempo de carga de uma música do GH3 no R36S (log `[carga]`)
+
+### Pendências
+
+- A carga no R36S (14,8 s para 255 s com 3 faixas) pode cair à metade ou
+  menos decodificando as faixas em paralelo (o RK3326 tem 4 núcleos).
+- `.sng`, e as abertas/taps de charts de outras fontes (só o formato
+  RB/CH/PS foi visto até agora).
+
+---
+
+## Etapa 4e: carga em paralelo e acorde exato (2026-10-28)
+
+### Pedido (depois do teste no R36S: liso, mecânicas boas)
+
+- A Rascal Flatts demorou mais para carregar: usar os outros núcleos.
+- Acorde vermelho + azul aceitava vermelho + amarelo + azul apertados
+  juntos: isso deve errar (e ter penalidade).
+- Analisar os próximos passos: a guitarra (testada só no PC) e o que mais
+  estiver ficando de lado.
+
+### O log do R36S
+
+- A carga cresce com o número de faixas: Pat Benatar (3 faixas MP3, 181 s)
+  em 7,5 s; Rascal Flatts (**7 faixas** Opus, 254 s) em **28,2 s**, num
+  núcleo só.
+- Erro médio dos acertos: -37 a -44 ms (sugestão: Ajuste de tempo +40 ms).
+
+### O que foi feito
+
+**Carga em paralelo** (`platform/carregador.c`): uma thread por núcleo
+(no máximo uma por faixa); cada uma pega a próxima faixa livre, decodifica
+inteira e soma no mix. A soma passou a ser em 32 bits, com um corte só no
+fim (antes cortava a cada faixa): o resultado é o mesmo em qualquer ordem
+e o som não satura no meio da mistura. No PC, a Rascal Flatts:
+
+| threads | tempo | |
+|---|---|---|
+| 1 | 3,96 s | |
+| 4 (como o R36S) | 1,48 s | 2,7x mais rápido |
+| 7 | 1,07 s | |
+
+O áudio sai idêntico, byte a byte, com 1, 4 ou 7 threads (mesmo hash), e o
+ThreadSanitizer não acusou nada. No R36S, a estimativa é cair de 28 s para
+uns 10 s. `ARKHERO_THREADS=n` força o número de threads, para medir.
+
+**Acorde exato** (`game/judge.c`): num acorde, os botões apertados têm de
+ser exatamente os dele; um a mais (apertado agora ou já segurado) erra o
+acorde e conta uma penalidade (uma por frame, não uma por botão). O botão
+de um sustain ainda segurado não conta como "a mais". Nota simples continua
+tolerante a um botão segurado de antes. Conferido com o jogador automático
+no Expert das 78 músicas: 80.521 notas, full combo em todas, zero
+penalidades.
+
+**Pacote:** `licencas/` com os textos de licença da SDL, libogg, libvorbis,
+opus, opusfile e dr_mp3 (as da Xiph, BSD, exigem isso na distribuição), e a
+pasta `songs/` com um aviso de onde pôr as músicas.
+
+**Testes:** 32 no `test_game` (novos: acorde com botão a mais, botão a mais
+já segurado, acorde no meio de um sustain longo).
+
+---
+
+## Próximos passos (análise de 2026-10-28)
+
+### A guitarra (modo guitarra), para testar no PC
+
+O que já existe: as ações de palhetada (cima/baixo) no input, as flags de
+HOPO e tap em cada nota, o item "Modo de jogo" no menu, e o juiz isolado
+em `judge.c`.
+
+O que falta, em ordem:
+
+1. **Reconhecer o controle.** A SDL3 identifica guitarras como
+   `SDL_JOYSTICK_TYPE_GUITAR`. Para o tipo mais comum no PC (guitarra de
+   Xbox 360 / Rock Band): trastes em A, B, Y, X, LB; palhetada no d-pad;
+   whammy no eixo X do analógico direito; inclinação (star power) no eixo
+   Y dele. Um perfil automático por tipo de controle.
+2. **O juiz do modo guitarra**, ao lado do atual (o modo controle fica):
+   - palhetada com os trastes certos acerta; palhetada sem nota é erro;
+   - nota simples aceita trastes abaixo segurados ("ancorar"); acorde exato;
+   - HOPO: acerta trocando de traste sem palhetar, se a nota anterior foi
+     acertada; tap: sempre sem palhetar;
+   - uma palhetada logo depois de um HOPO não pune (folga);
+   - testes para cada regra: é onde moram os bugs desse gênero de jogo.
+3. **Menus:** "Modo de jogo: Controle / Guitarra", palhetada de volta na
+   tela de Controles, e o perfil da guitarra.
+
+### O que está ficando de lado
+
+**Para fazer agora / decidir:**
+- **Ajuste de tempo no R36S:** colocar em +40 ms (pelo log).
+- **Licença do próprio Ark Hero:** o repositório não tem um arquivo de
+  licença; sem ele, legalmente ninguém pode usar o código. Escolher (MIT,
+  GPL...) antes de divulgar.
+- **A branch `main`:** decidir se a `claudio` entra na `main` ou se a
+  `main` fica como a sua versão de estudo.
+- **Documentos:** a linha "Estado" do README e a ARQUITETURA.md descrevem o
+  jogo de semanas atrás.
+
+**Para a biblioteca da comunidade:**
+- outros instrumentos: o `PART BASS` já está nos MIDI do GH3 (baixo e
+  guitarra rítmica são quase de graça, com o leitor que já existe);
+- `.sng`; nomes com acento (fonte TrueType); capa do álbum (`album.jpg`
+  pede um leitor de JPEG); prévia da música na lista.
+
+**Para a partida:**
+- estrelas por música; barra de rock (hoje não dá para perder); som de erro
+  e silenciar a guitarra quando erra; modo treino por seção (as seções do
+  `[Events]` já estão nos arquivos).
+
+**Distribuição:**
+- testar em outro firmware (ROCKNIX, EmuELEC: glibc 2.36, o mínimo do
+  container); build x86_64; o `port.json` e as imagens do PortMaster.
+
+**O objetivo original: Lua** (temas, regras, modificadores, carreira:
+ver a etapa 4c).

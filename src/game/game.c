@@ -9,8 +9,6 @@
 #define REPETE_ESPERA 0.40  /* segurar Cima/Baixo: começa a repetir depois disso... */
 #define REPETE_PASSO  0.07  /* ...e anda um item a cada tanto */
 
-static void monta_menu_musicas(Game *g);
-
 void Game_init(Game *g)
 {
     *g = (Game){0};
@@ -20,18 +18,19 @@ void Game_init(Game *g)
     g->opcoes.canhoto     = false;
     g->opcoes.mostrar_fps = true;
     g->opcoes.volume      = 80;
+    g->opcoes.organizar   = ORGANIZAR_PASTAS;
+    g->opcoes.penalidade  = true;
+    g->opcoes.mostrar_julgamento = false;
+    g->opcoes.ajuste_ms   = 0;
     Chart_demo(&g->chart);   /* se falhar, o chart fica vazio e a pista também */
-    monta_menu_musicas(g);
+    Biblioteca_monta_menu(g);
 }
 
 void Game_quit(Game *g)
 {
     Chart_free(&g->chart);
     ChartFile_free(&g->arquivo);
-    free(g->musicas);
-    free(g->itens_musicas);
-    g->musicas       = NULL;
-    g->itens_musicas = NULL;
+    Biblioteca_free(g);
 }
 
 bool Game_load_chart(Game *g, const Nota *notas, int n)
@@ -55,6 +54,21 @@ const Menu *Game_menu(const Game *g)
     case TELA_CARREGANDO: return NULL;
     default:              return Menu_da_tela(g->tela);
     }
+}
+
+int Game_item_acao(int id)
+{
+    return (id >= ID_MAPEAR && id < ID_MAPEAR + ACAO_N) ? id - ID_MAPEAR : -1;
+}
+
+int Game_item_musica(int id)
+{
+    return id >= ID_MUSICA ? id - ID_MUSICA : -1;
+}
+
+int Game_item_pasta(int id)
+{
+    return (id >= ID_PASTA && id < ID_MUSICA) ? id - ID_PASTA : -1;
 }
 
 int Game_menu_sel(const Game *g)
@@ -93,6 +107,7 @@ static void avisa(Game *g, const char *texto)
 static void comeca_partida(Game *g)
 {
     g->partida++;            /* o main.c vê a mudança e começa o som do zero */
+    g->novo_recorde = false;
     Chart_reset(&g->chart);
     g->t                = g->chart.inicio;   /* negativo: tempo de preparação antes da música */
     g->proxima          = 0;
@@ -109,6 +124,7 @@ static void comeca_partida(Game *g)
     g->soma_erro        = 0.0;
     g->soma_erro2       = 0.0;
     g->pausas           = 0;
+    g->toques_errados   = 0;
     for (int f = 0; f < 5; f++) g->acerto_t[f] = -1.0e9;   /* "nunca": sem animação no início */
     g->ultimo_julgamento_t = -1.0e9;
 }
@@ -127,13 +143,16 @@ void Game_play(Game *g)
 static void volta(Game *g)
 {
     switch (g->tela) {
-    case TELA_MUSICAS:     vai_para(g, TELA_INICIO);      break;
+    case TELA_MUSICAS:     if (!Biblioteca_sobe(g)) vai_para(g, TELA_INICIO); break;
     case TELA_DIFICULDADE: vai_para(g, TELA_MUSICAS);     break;
     case TELA_CARREGANDO:
         g->pedido = PEDIDO_CANCELAR_CARGA;
         vai_para(g, TELA_DIFICULDADE);
         break;
-    case TELA_CONFIG:    vai_para(g, TELA_INICIO); break;
+    case TELA_CONFIG:
+        g->pedido = PEDIDO_SALVAR_OPCOES;   /* saindo das configurações: grava */
+        vai_para(g, TELA_INICIO);
+        break;
     case TELA_CONTROLES: vai_para(g, TELA_CONFIG); break;
     case TELA_AUDIO:     vai_para(g, TELA_CONFIG); break;
     case TELA_JOGO:      g->pausado = false;       break;   /* "voltar" na pausa = continuar */
@@ -155,9 +174,19 @@ static void ajusta(Game *g, int id, int passo)
     case ID_VELOCIDADE: o->velocidade = limita(o->velocidade + passo, GAME_VELOCIDADE_MIN, GAME_VELOCIDADE_MAX); break;
     case ID_CANHOTO:    o->canhoto     = !o->canhoto;     break;
     case ID_PRECISAO:   o->precisao    = !o->precisao;    break;
+    case ID_PENALIDADE: o->penalidade  = !o->penalidade;  break;
+    case ID_JULGAMENTO: o->mostrar_julgamento = !o->mostrar_julgamento; break;
+    case ID_AJUSTE:     o->ajuste_ms = limita(o->ajuste_ms + GAME_AJUSTE_PASSO * passo, -GAME_AJUSTE_MAX, GAME_AJUSTE_MAX); break;
+    case ID_ORGANIZAR:
+        o->organizar = (o->organizar + passo + ORGANIZAR_N) % ORGANIZAR_N;
+        g->pasta_atual[0] = '\0';
+        Biblioteca_monta_menu(g);
+        g->pedido = PEDIDO_SALVAR_OPCOES;
+        break;
     case ID_FPS:        o->mostrar_fps = !o->mostrar_fps; break;
     case ID_VOLUME:     o->volume = limita(o->volume + 10 * passo, 0, 100); break;
     case ID_ANALOGICO:  g->pedido = PEDIDO_TROCAR_ANALOGICO; break;
+    case ID_FRONTAIS:   g->pedido = PEDIDO_TROCAR_FRONTAIS;  break;
     default: break;
     }
 }
@@ -165,68 +194,16 @@ static void ajusta(Game *g, int id, int passo)
 /* ---------------------------------------------------------------------------
  * Músicas e dificuldades
  * ------------------------------------------------------------------------- */
-static void monta_menu_musicas(Game *g)
-{
-    const int precisa = g->n_musicas + 3;
-    if (precisa > g->cap_itens) {
-        ItemMenu *novo = realloc(g->itens_musicas, sizeof(ItemMenu) * (size_t)precisa);
-        if (!novo) return;   /* sem memória: fica a lista anterior */
-        g->itens_musicas = novo;
-        g->cap_itens     = precisa;
-    }
-    int n = 0;
-    g->itens_musicas[n++] = (ItemMenu){ "Demonstracao (sem musica)", ID_DEMO, ITEM_BOTAO, false };
-    for (int i = 0; i < g->n_musicas; i++)
-        g->itens_musicas[n++] = (ItemMenu){ g->musicas[i].titulo, ID_MUSICA + i, ITEM_BOTAO, false };
-    g->itens_musicas[n++] = (ItemMenu){ "Procurar musicas novas", ID_PROCURAR, ITEM_BOTAO, false };
-    g->itens_musicas[n++] = (ItemMenu){ "Voltar", ID_VOLTAR, ITEM_BOTAO, false };
-    g->menu_musicas = (Menu){ "Musicas", g->itens_musicas, n };
-    if (g->sel[TELA_MUSICAS] >= n) g->sel[TELA_MUSICAS] = n - 1;
-}
-
-void Game_clear_songs(Game *g)
-{
-    g->n_musicas = 0;
-}
-
-void Game_songs_done(Game *g)
-{
-    monta_menu_musicas(g);
-}
-
-/* copia trocando o que não for ASCII por '?': a fonte de debug não desenha acento */
-static void copia_ascii(char *destino, size_t max, const char *origem)
-{
-    size_t k = 0;
-    for (const unsigned char *p = (const unsigned char *)origem; *p && k + 1 < max; p++) {
-        if (*p < 0x80)                destino[k++] = (char)*p;
-        else if ((*p & 0xC0) == 0xC0) destino[k++] = '?';   /* um '?' por caractere UTF-8 */
-    }
-    destino[k] = '\0';
-}
-
-void Game_add_song(Game *g, const SongIni *ini, const char *nome_pasta)
-{
-    if (g->n_musicas >= g->cap_musicas) {
-        const int cap = g->cap_musicas ? g->cap_musicas * 2 : 64;
-        InfoMusica *novo = realloc(g->musicas, sizeof(InfoMusica) * (size_t)cap);
-        if (!novo) return;
-        g->musicas     = novo;
-        g->cap_musicas = cap;
-    }
-    InfoMusica *m = &g->musicas[g->n_musicas++];
-    copia_ascii(m->titulo, sizeof(m->titulo), ini->nome[0] ? ini->nome : nome_pasta);
-    copia_ascii(m->artista, sizeof(m->artista), ini->artista);
-    copia_ascii(m->charter, sizeof(m->charter), ini->charter);
-    m->duracao_ms = ini->duracao_ms;
-    m->atraso_ms  = ini->atraso_ms;
-}
-
 bool Game_open_chart(Game *g, const char *texto, size_t tamanho)
 {
     ChartFile_free(&g->arquivo);
     char erro[96];
-    g->arquivo_ok = ChartFile_parse(&g->arquivo, texto, tamanho, erro, sizeof(erro));
+    /* .mid começa com "MThd"; o resto é .chart (texto) */
+    const int nota_sp = (g->musica >= 0 && g->musica < g->n_musicas) ? g->musicas[g->musica].nota_sp : 116;
+    if (tamanho >= 4 && memcmp(texto, "MThd", 4) == 0)
+        g->arquivo_ok = ChartFile_parse_mid(&g->arquivo, (const unsigned char *)texto, tamanho, nota_sp, erro, sizeof(erro));
+    else
+        g->arquivo_ok = ChartFile_parse(&g->arquivo, texto, tamanho, erro, sizeof(erro));
     if (!g->arquivo_ok) {
         avisa(g, "Nao consegui ler o chart");
         return false;
@@ -274,19 +251,24 @@ void Game_audio_ready(Game *g, bool ok, double duracao)
 
 static void executa(Game *g, const ItemMenu *item)
 {
-    if (item->id >= ID_MAPEAR) {
-        g->pedido      = PEDIDO_MAPEAR;
-        g->pedido_acao = (Acao)(item->id - ID_MAPEAR);
+    /* as faixas de ids, da maior para a menor (game.h) */
+    if (Game_item_musica(item->id) >= 0) {
+        g->musica        = Game_item_musica(item->id);
+        g->pedido        = PEDIDO_ABRIR_MUSICA;   /* o main.c lê o notes.chart e chama Game_open_chart */
+        g->pedido_indice = g->musica;
+        return;
+    }
+    if (Game_item_pasta(item->id) >= 0) {
+        Biblioteca_entra(g, Game_item_pasta(item->id));
         return;
     }
     if (item->id >= ID_DIFICULDADE) {
         escolhe_dificuldade(g, (Dificuldade)(item->id - ID_DIFICULDADE));
         return;
     }
-    if (item->id >= ID_MUSICA) {
-        g->musica        = item->id - ID_MUSICA;
-        g->pedido        = PEDIDO_ABRIR_MUSICA;   /* o main.c lê o notes.chart e chama Game_open_chart */
-        g->pedido_indice = g->musica;
+    if (Game_item_acao(item->id) >= 0) {
+        g->pedido      = PEDIDO_MAPEAR;
+        g->pedido_acao = (Acao)Game_item_acao(item->id);
         return;
     }
 
@@ -357,15 +339,15 @@ static void navega(Game *g, const Menu *m, int *sel, const Botoes *b, double dt)
     const int passo = ((ap & ACAO_BIT(ACAO_DIREITA))  ? 1 : 0)
                     - ((ap & ACAO_BIT(ACAO_ESQUERDA)) ? 1 : 0);
 
-    /* na lista de músicas, Esq/Dir pulam uma página inteira (sem dar a volta) */
-    if (g->tela == TELA_MUSICAS && passo != 0) {
+    if (item->tipo == ITEM_OPCAO && passo != 0) {
+        if (item->em_breve) avisa(g, "Em breve");
+        else                ajusta(g, item->id, passo);
+    } else if (g->tela == TELA_MUSICAS && passo != 0) {
+        /* na lista de músicas, Esq/Dir pulam uma página inteira (sem dar a volta) */
         *sel += passo * GAME_PAGINA;
         if (*sel < 0) *sel = 0;
         if (*sel > m->n - 1) *sel = m->n - 1;
         item = &m->itens[*sel];
-    } else if (item->tipo == ITEM_OPCAO && passo != 0) {
-        if (item->em_breve) avisa(g, "Em breve");
-        else                ajusta(g, item->id, passo);
     }
 
     if (ap & ACAO_BIT(ACAO_CONFIRMA)) {
@@ -426,7 +408,9 @@ static void atualiza_jogo(Game *g, const Botoes *b, double dt)
     }
 
     /* com áudio, o tempo é o do áudio; ele nunca volta para trás */
-    double novo = g->relogio_audio ? g->t_audio : g->t + dt;
+    /* o ajuste de tempo desloca o relógio do áudio: com +48 ms, o jogo "vê" a
+       música 48 ms à frente, compensando o atraso entre o som sair e chegar */
+    double novo = g->relogio_audio ? g->t_audio + g->opcoes.ajuste_ms / 1000.0 : g->t + dt;
     if (novo < g->t) novo = g->t;
     const double passo = novo - g->t;
     g->t      = novo;
@@ -444,6 +428,7 @@ static void atualiza_jogo(Game *g, const Botoes *b, double dt)
     if (g->proxima >= g->chart.n && g->t > fim) {
         g->terminou  = true;
         g->sel_pausa = 0;
+        Biblioteca_fim_partida(g);   /* recorde? */
     }
 }
 

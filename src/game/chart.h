@@ -11,8 +11,8 @@
 /* flags da nota */
 #define NOTA_STAR    0x01   /* faz parte de uma frase de star power */
 #define NOTA_ABERTA  0x02   /* nota aberta (sem traste): no modo controle, qualquer botão */
-#define NOTA_TAP     0x04   /* tap (para o modo guitarra; no modo controle não muda nada) */
-#define NOTA_FORCADA 0x08   /* HOPO forçado (idem) */
+#define NOTA_TAP     0x04   /* tap: não precisa de palhetada */
+#define NOTA_HOPO    0x08   /* hammer-on / pull-off: não precisa de palhetada */
 
 typedef enum {
     NOTA_PENDENTE,

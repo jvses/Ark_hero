@@ -1,0 +1,113 @@
+--- ambiente ---
+CFW        : dArkOS 09022026
+device     : RG351MP (aarch64)
+glibc CFW  : 241
+ldd (Debian GLIBC 2.41-12+deb13u3) 2.41
+binario    : /roms/ports/arkhero/arkhero.aarch64
+----------------
+===== Ark Hero =====
+SDL compilado : 3.4.16
+SDL runtime   : 3.4.16 (SDL-release-3.4.16-0-gfa2c02bb6)
+video disp.   : wayland x11 kmsdrm offscreen dummy evdev 
+video em uso  : kmsdrm
+render disp.  : opengl opengles2 vulkan gpu software 
+render em uso : opengles2
+[input] controles carregados de /roms/ports/arkhero/conf/arkhero/controles.cfg
+[input] controles: verde=leftshoulder/A vermelho=lefttrigger/S amarelo=righttrigger/D azul=rightshoulder/F laranja=leste/G palheta_cima=dpup/Up palheta_baixo=dpdown/Down star_power=back/Space whammy=-/W pausa=start/Escape  analogico=Esquerdo
+[W][22:07:54.464988] pw.conf      | [          conf.c: 1182 try_load_conf()] can't load config client.conf: No such file or directory
+[E][22:07:54.465345] pw.conf      | [          conf.c: 1215 pw_conf_load_conf_for_context()] can't load config client.conf: No such file or directory
+[W][22:07:54.478956] pw.conf      | [          conf.c: 1182 try_load_conf()] can't load config client.conf: No such file or directory
+[E][22:07:54.479170] pw.conf      | [          conf.c: 1215 pw_conf_load_conf_for_context()] can't load config client.conf: No such file or directory
+[audio] driver alsa, dispositivo 48000 Hz 2 canais, buffer 1024 frames (21.3 ms)
+[arkhero] versao 0.1 | executavel em /roms/ports/arkhero/ | dados em /roms/ports/arkhero/conf/arkhero/
+[arkhero] opcoes carregadas de /roms/ports/arkhero/conf/arkhero/opcoes.cfg
+[musica] procurando em /roms/ports/arkhero/songs/
+[musica] procurando em /roms/ports/arkhero/assets/musics/
+[input] botoes frontais: Auto (Nintendo)
+[input] controle: GO-Super Gamepad (tipo standard)
+[input] mapeamento SDL: 1900bb3e4b4800000011000000010000,GO-Super Gamepad,a:b1,b:b0,back:b12,dpdown:b9,dpleft:b10,dpright:b11,dpup:b8,guide:b16,leftshoulder:b4,leftstick:b14,lefttrigger:b6,leftx:a0,lefty:a1,rightshoulder:b5,rightstick:b15,righttrigger:b7,rightx:a2,righty:a3,start:b13,x:b2,y:b3,platform:Linux,
+[musica] 78 musica(s) em 0.18 s (2 com .chart, 76 com .mid; 80 pastas olhadas; 0 com chart mas sem audio suportado)
+[video] fps 54.2  pior frame 495 ms
+[video] fps 59.9  pior frame 27 ms
+[input] laranja -> controle sul
+[video] fps 59.9  pior frame 26 ms
+[input] whammy -> analogico Direito
+[video] fps 59.9  pior frame 17 ms
+[input] whammy e star power no analogico Esquerdo
+[video] fps 59.9  pior frame 17 ms
+[input] whammy -> analogico Direito
+[input] whammy -> analogico Direito
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[musica] procurando em /roms/ports/arkhero/songs/
+[musica] procurando em /roms/ports/arkhero/assets/musics/
+[musica] 78 musica(s) em 0.03 s (2 com .chart, 76 com .mid; 80 pastas olhadas; 0 com chart mas sem audio suportado)
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[musica] Pat Benatar - Hit Me with Your Best Shot: chart lido em 6.8 ms (resolucao 480, 288 mudancas de andamento, offset 0.000 s) notas: facil 242, medio 401, dificil 454, expert 491
+[carga] Pat Benatar - Hit Me with Your Best Shot: 3 faixa(s)
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[carga] 3 faixa(s), 180.7 s de audio em 7.48 s (72x o tempo real)
+[carga] pronta: 180.7 s de musica, 33.1 MB na memoria
+[partida] inicio: Hit Me With Your Best Shot (Dificil) | 454 notas | janela +-100 ms | velocidade 5 | som: musica | preparacao 0.0 s
+[partida] penalidade sim | ajuste de tempo +0 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[partida] abandonada em 42.4 s: 6864 pontos, 57/86 notas (66%), maior combo 15, star power 30%
+[partida] tempo dos acertos: erro medio -43.7 ms, desvio 35.0 ms | toques sem nota 25 | pausas 3 | frames lentos 0 | saltos do relogio 0
+[partida] sugestao: Ajuste de tempo +44 ms
+[video] fps 59.9  pior frame 17 ms
+[musica] Rascal Flatts - Life Is a Highway (Harmonix): chart lido em 3.8 ms (resolucao 480, 488 mudancas de andamento, offset 0.000 s) notas: facil 334, medio 484, dificil 662, expert 920
+[carga] Rascal Flatts - Life Is a Highway (Harmonix): 7 faixa(s)
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[carga] 7 faixa(s), 254.0 s de audio em 28.18 s (63x o tempo real)
+[carga] pronta: 254.0 s de musica, 46.5 MB na memoria
+[partida] inicio: Life Is a Highway (Dificil) | 662 notas | janela +-100 ms | velocidade 5 | som: musica | preparacao 0.0 s
+[partida] penalidade sim | ajuste de tempo +0 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[partida] abandonada em 71.3 s: 10840 pontos, 125/170 notas (74%), maior combo 17, star power 59%
+[partida] tempo dos acertos: erro medio -36.7 ms, desvio 36.3 ms | toques sem nota 56 | pausas 2 | frames lentos 0 | saltos do relogio 0
+[partida] sugestao: Ajuste de tempo +37 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 25 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+/opt/system/Tools/PortMaster/funcs.txt: line 140:  2067 Killed                  $ESUDO pkill -9 -f gptokeyb
+/opt/system/Tools/PortMaster/funcs.txt: line 140:  2074 Killed                  $ESUDO pkill -9 -f gptokeyb2

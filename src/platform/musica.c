@@ -73,6 +73,7 @@ int Musica_roots(char raizes[][512], int max)
 typedef struct {
     Musica atual;          /* o que esta pasta tem */
     bool   tem_mid, tem_ini;
+    char   mid[32];
     char   ini[32];
     char (*subpastas)[96]; /* nomes das subpastas */
     int    n_sub, cap_sub;
@@ -115,6 +116,7 @@ static SDL_EnumerationResult SDLCALL item_da_pasta(void *dado, const char *dir, 
         SDL_strlcpy(m->chart, nome, sizeof(m->chart));
     } else if (SDL_strcasecmp(nome, "notes.mid") == 0) {
         p->tem_mid = true;
+        SDL_strlcpy(p->mid, nome, sizeof(p->mid));
     } else if (SDL_strcasecmp(nome, "song.ini") == 0) {
         p->tem_ini = true;
         SDL_strlcpy(p->ini, nome, sizeof(p->ini));
@@ -124,11 +126,11 @@ static SDL_EnumerationResult SDLCALL item_da_pasta(void *dado, const char *dir, 
         const char *ext = ponto + 1;
         if (e_faixa(base)) {
             if (SDL_strcasecmp(ext, "ogg") == 0 || SDL_strcasecmp(ext, "opus") == 0 ||
-                SDL_strcasecmp(ext, "wav") == 0) {
+                SDL_strcasecmp(ext, "mp3") == 0 || SDL_strcasecmp(ext, "wav") == 0) {
                 if (m->n_faixas < CARREGADOR_MAX_FAIXAS)
                     SDL_strlcpy(m->faixas[m->n_faixas++], nome, sizeof(m->faixas[0]));
-            } else if (SDL_strcasecmp(ext, "mp3") == 0) {
-                m->ignoradas++;   /* MP3 entra depois */
+            } else {
+                m->ignoradas++;   /* faixa num formato que o jogo não lê (flac, m4a...) */
             }
         }
     }
@@ -148,7 +150,8 @@ static void acrescenta(Varredura *v, const Musica *m)
     SDL_SetAtomicInt(&v->achadas, v->n);
 }
 
-static void varre(Varredura *v, const char *pasta, int nivel)
+/* rel = o caminho desta pasta a partir da raiz ("" na raiz) */
+static void varre(Varredura *v, const char *pasta, const char *rel, int nivel)
 {
     if (SDL_GetAtomicInt(&v->cancelar)) return;
 
@@ -158,12 +161,20 @@ static void varre(Varredura *v, const char *pasta, int nivel)
     if (!SDL_EnumerateDirectory(p.atual.pasta, item_da_pasta, &p)) return;
     v->pastas++;
 
+    /* sem notes.chart, vale o notes.mid (quando os dois existem, o .chart ganha) */
+    if (!p.atual.chart[0] && p.tem_mid) SDL_strlcpy(p.atual.chart, p.mid, sizeof(p.atual.chart));
+
     if (p.atual.chart[0] && p.atual.n_faixas > 0) {   /* é uma música */
         char tmp[512];
         SDL_strlcpy(tmp, p.atual.pasta, sizeof(tmp));
         tmp[SDL_strlen(tmp) - 1] = '\0';
         const char *barra = SDL_strrchr(tmp, '/');
         SDL_strlcpy(p.atual.nome, barra ? barra + 1 : tmp, sizeof(p.atual.nome));
+        /* o grupo é o caminho relativo sem o último trecho (a pasta da música) */
+        SDL_strlcpy(p.atual.grupo, rel, sizeof(p.atual.grupo));
+        char *ultima = SDL_strrchr(p.atual.grupo, '/');
+        if (ultima) *ultima = '\0';
+        else        p.atual.grupo[0] = '\0';
         if (p.tem_ini) {
             char caminho[600];
             Musica_path(&p.atual, p.ini, caminho, sizeof(caminho));
@@ -172,12 +183,12 @@ static void varre(Varredura *v, const char *pasta, int nivel)
         acrescenta(v, &p.atual);
     } else {
         if (p.atual.chart[0]) v->sem_audio++;
-        else if (p.tem_mid)   v->so_mid++;
         if (nivel < PROFUNDIDADE_MAX) {
             for (int i = 0; i < p.n_sub; i++) {
-                char sub[600];
+                char sub[600], sub_rel[400];
                 SDL_snprintf(sub, sizeof(sub), "%s%s", p.atual.pasta, p.subpastas[i]);
-                varre(v, sub, nivel + 1);
+                SDL_snprintf(sub_rel, sizeof(sub_rel), "%s%s%s", rel, rel[0] ? "/" : "", p.subpastas[i]);
+                varre(v, sub, sub_rel, nivel + 1);
             }
         }
     }
@@ -188,7 +199,7 @@ static int SDLCALL trabalha(void *dado)
 {
     Varredura *v = dado;
     const Uint64 inicio = SDL_GetTicksNS();
-    for (int i = 0; i < v->n_raizes; i++) varre(v, v->raizes[i], 0);
+    for (int i = 0; i < v->n_raizes; i++) varre(v, v->raizes[i], "", 0);
     v->segundos = (double)(SDL_GetTicksNS() - inicio) / 1e9;
     SDL_SetAtomicInt(&v->estado, VARRE_PRONTO);   /* por último: daqui em diante o main lê */
     return 0;
@@ -204,7 +215,7 @@ bool Varredura_start(Varredura *v)
 
     v->n_raizes = Musica_roots(v->raizes, MUSICA_MAX_RAIZES);
     v->musicas  = NULL;
-    v->n = v->cap = v->pastas = v->so_mid = v->sem_audio = 0;
+    v->n = v->cap = v->pastas = v->sem_audio = 0;
     v->segundos = 0.0;
     SDL_SetAtomicInt(&v->achadas, 0);
     SDL_SetAtomicInt(&v->cancelar, 0);

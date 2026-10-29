@@ -20,11 +20,13 @@ static const ItemMenu ITENS_CONFIG[] = {
     { "Modo de jogo",        ID_MODO,       ITEM_OPCAO, false },
     { "Velocidade da pista", ID_VELOCIDADE, ITEM_OPCAO, false },
     { "Modo precisao",       ID_PRECISAO,   ITEM_OPCAO, false },
+    { "Penalidade (erro)",   ID_PENALIDADE, ITEM_OPCAO, false },
+    { "Mostrar acertos",     ID_JULGAMENTO, ITEM_OPCAO, false },
+    { "Ajuste de tempo",     ID_AJUSTE,     ITEM_OPCAO, false },
     { "Modo canhoto",        ID_CANHOTO,    ITEM_OPCAO, false },
     { "Mostrar FPS",         ID_FPS,        ITEM_OPCAO, false },
     { "Volume",              ID_VOLUME,     ITEM_OPCAO, false },
     { "Teste de audio",      ID_AUDIO_TESTE, ITEM_BOTAO, false },
-    { "Calibrar atraso",     ID_CALIBRAR,   ITEM_BOTAO, true  },
     { "Voltar",              ID_VOLTAR,     ITEM_BOTAO, false },
 };
 
@@ -39,6 +41,7 @@ static const ItemMenu ITENS_CONTROLES[] = {
     { "Whammy",          ID_MAPEAR + ACAO_WHAMMY,        ITEM_BOTAO, false },
     { "Pausa",           ID_MAPEAR + ACAO_PAUSA,         ITEM_BOTAO, false },
     { "Analogico",       ID_ANALOGICO,                   ITEM_OPCAO, false },
+    { "Botoes frontais", ID_FRONTAIS,                    ITEM_OPCAO, false },
     { "Restaurar padrao", ID_RESTAURAR,                  ITEM_BOTAO, false },
     { "Voltar",          ID_VOLTAR,                      ITEM_BOTAO, false },
 };
@@ -95,6 +98,10 @@ void Menu_valor(const Game *g, int id, char *buf, size_t n)
     case ID_VELOCIDADE: snprintf(buf, n, "%d", o->velocidade);            break;
     case ID_CANHOTO:    snprintf(buf, n, "%s", o->canhoto ? "Sim" : "Nao"); break;
     case ID_PRECISAO:   snprintf(buf, n, "%s", o->precisao ? "Sim" : "Nao"); break;
+    case ID_PENALIDADE: snprintf(buf, n, "%s", o->penalidade ? "Sim" : "Nao"); break;
+    case ID_JULGAMENTO: snprintf(buf, n, "%s", o->mostrar_julgamento ? "Sim" : "Nao"); break;
+    case ID_AJUSTE:     snprintf(buf, n, "%+d ms", o->ajuste_ms); break;
+    case ID_ORGANIZAR:  snprintf(buf, n, "%s", Biblioteca_nome_organizar(o->organizar)); break;
     case ID_FPS:        snprintf(buf, n, "%s", o->mostrar_fps ? "Sim" : "Nao"); break;
     case ID_VOLUME:     snprintf(buf, n, "%d%%", o->volume);              break;
     default:            if (n > 0) buf[0] = '\0';                         break;

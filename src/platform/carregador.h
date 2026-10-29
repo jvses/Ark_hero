@@ -5,8 +5,8 @@
  * num único Pcm, numa thread separada: a tela continua andando enquanto
  * carrega, e o progresso pode ser mostrado.
  *
- * Formatos: Opus (.opus, e .ogg que na verdade é Opus), Ogg Vorbis (.ogg)
- * e WAV. MP3 ainda não. */
+ * Formatos: Opus (.opus, e .ogg que na verdade é Opus), Ogg Vorbis (.ogg),
+ * MP3 e WAV. */
 
 #include <SDL3/SDL.h>
 
