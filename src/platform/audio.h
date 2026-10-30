@@ -24,6 +24,7 @@ void Pcm_free(Pcm *p);
 
 typedef struct {
     SDL_AudioStream *stream;          /* ligado ao dispositivo (SDL_OpenAudioDeviceStream) */
+    SDL_AudioStream *efeito;          /* efeitos curtos (o som de erro), num segundo dispositivo lógico */
     int              frames_buffer;   /* tamanho do buffer do dispositivo: a latência básica */
     char             driver[32];
 
@@ -56,5 +57,13 @@ double Audio_song_time(Audio *a, Uint64 agora_ns);    /* o relógio mestre, suav
 
 /* Metrônomo gerado por código: um clique em cada tempo[i] (forte[i] = acento). */
 bool   Audio_make_clicks(Pcm *saida, const double *tempo, const bool *forte, int n, double duracao);
+
+/* Efeito curto por cima da música (um novo corta o que ainda tocava). O
+ * Audio não é dono do Pcm, que precisa durar até o efeito acabar. */
+void   Audio_effect(Audio *a, const Pcm *som);
+
+/* O "engasgo" do instrumento quando o jogador erra: um ruído abafado com um
+ * tom grave que cai. grave = 1 para a guitarra; menor = mais grave (baixo). */
+bool   Audio_make_miss(Pcm *saida, float grave);
 
 #endif

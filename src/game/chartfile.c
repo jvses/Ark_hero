@@ -1,4 +1,5 @@
 #include "game/chartfile.h"
+#include "game/texto.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -11,17 +12,20 @@
 #define PREPARACAO       2.5    /* segundos de pista antes da primeira nota */
 #define HOPO_LIMIAR      (65.0 / 192.0)   /* até essa fração de batida da anterior, vira HOPO */
 
-static const char *const SECAO_DIF[DIF_N] = {
-    [DIF_FACIL]   = "EasySingle",
-    [DIF_MEDIO]   = "MediumSingle",
-    [DIF_DIFICIL] = "HardSingle",
-    [DIF_EXPERT]  = "ExpertSingle",
-};
+/* o nome de uma seção do .chart é <dificuldade><instrumento>: "ExpertDoubleBass" */
+static const char *const SECAO_DIF[DIF_N]    = { "Easy", "Medium", "Hard", "Expert" };
+static const char *const SECAO_INSTR[INSTR_N] = { "Single", "DoubleBass", "DoubleRhythm", "DoubleGuitar", "Keyboard" };
 
 const char *Dificuldade_nome(Dificuldade d)
 {
-    static const char *const NOMES[DIF_N] = { "Facil", "Medio", "Dificil", "Expert" };
+    static const char *const NOMES[DIF_N] = { N_("Fácil"), N_("Médio"), N_("Difícil"), N_("Expert") };
     return (d >= 0 && d < DIF_N) ? NOMES[d] : "?";
+}
+
+const char *Instrumento_nome(Instrumento i)
+{
+    static const char *const NOMES[INSTR_N] = { N_("Guitarra"), N_("Baixo"), N_("Rítmica"), N_("Guitarra coop"), N_("Teclado") };
+    return (i >= 0 && i < INSTR_N) ? NOMES[i] : "?";
 }
 
 /* ---------------------------------------------------------------------------
@@ -215,9 +219,14 @@ bool ChartFile_parse(ArquivoChart *a, const char *texto, size_t tamanho, char *e
             else if (n == 9 && strncmp(a0 + 1, "SyncTrack", 9) == 0) secao = SEC_SYNC;
             else {
                 for (int d = 0; d < DIF_N; d++) {
-                    if (n == strlen(SECAO_DIF[d]) && strncmp(a0 + 1, SECAO_DIF[d], n) == 0) {
-                        secao = SEC_DIF;
-                        dif   = &a->dif[d];
+                    const size_t nd = strlen(SECAO_DIF[d]);
+                    if (n <= nd || strncmp(a0 + 1, SECAO_DIF[d], nd) != 0) continue;
+                    for (int i = 0; i < INSTR_N; i++) {
+                        const char *resto = SECAO_INSTR[i];
+                        if (n - nd == strlen(resto) && strncmp(a0 + 1 + nd, resto, n - nd) == 0) {
+                            secao = SEC_DIF;
+                            dif   = &a->dif[i][d];
+                        }
                     }
                 }
             }
@@ -285,12 +294,12 @@ bool ChartFile_finish(ArquivoChart *a, char *erro, size_t n_erro)
     }
 
     bool alguma = false;
-    for (int d = 0; d < DIF_N; d++) {
-        ordena(&a->dif[d]);
-        alguma |= ChartFile_contar(a, (Dificuldade)d) > 0;
+    for (int i = 0; i < INSTR_N; i++) {
+        for (int d = 0; d < DIF_N; d++) ordena(&a->dif[i][d]);
+        alguma |= ChartFile_tem(a, (Instrumento)i);
     }
     if (!alguma) {
-        snprintf(erro, n_erro, "o chart nao tem notas de guitarra");
+        snprintf(erro, n_erro, "o chart nao tem notas de guitarra, baixo, ritmica ou teclado");
         ChartFile_free(a);
         return false;
     }
@@ -301,9 +310,11 @@ void ChartFile_free(ArquivoChart *a)
 {
     free(a->tempos);
     free(a->compassos);
-    for (int d = 0; d < DIF_N; d++) {
-        free(a->dif[d].notas);
-        free(a->dif[d].frases);
+    for (int i = 0; i < INSTR_N; i++) {
+        for (int d = 0; d < DIF_N; d++) {
+            free(a->dif[i][d].notas);
+            free(a->dif[i][d].frases);
+        }
     }
     memset(a, 0, sizeof(*a));
 }
@@ -314,9 +325,9 @@ static bool e_nota(const NotaBruta *b)
 }
 
 /* quantos ticks com nota de verdade (um acorde conta uma; marcadores sozinhos não) */
-int ChartFile_contar(const ArquivoChart *a, Dificuldade d)
+int ChartFile_contar(const ArquivoChart *a, Instrumento ins, Dificuldade d)
 {
-    const Pista_Dif *p = &a->dif[d];
+    const Pista_Dif *p = &a->dif[ins][d];
     int n = 0;
     uint32_t ultimo = 0;
     bool algum = false;
@@ -329,12 +340,19 @@ int ChartFile_contar(const ArquivoChart *a, Dificuldade d)
     return n;
 }
 
-bool Chart_from_file(Chart *c, const ArquivoChart *a, Dificuldade d, double atraso_s)
+bool ChartFile_tem(const ArquivoChart *a, Instrumento ins)
+{
+    for (int d = 0; d < DIF_N; d++)
+        if (ChartFile_contar(a, ins, (Dificuldade)d) > 0) return true;
+    return false;
+}
+
+bool Chart_from_file(Chart *c, const ArquivoChart *a, Instrumento ins, Dificuldade d, double atraso_s)
 {
     *c = (Chart){0};
-    const Pista_Dif *p = &a->dif[d];
+    const Pista_Dif *p = &a->dif[ins][d];
 
-    const int n = ChartFile_contar(a, d);
+    const int n = ChartFile_contar(a, ins, d);
     if (n == 0) return false;
     c->notas = calloc((size_t)n, sizeof(Nota));
     if (!c->notas) return false;

@@ -10,22 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const NOME_ORGANIZAR[ORGANIZAR_N] = { "Pastas", "Titulo", "Artista" };
+static const char *const NOME_ORGANIZAR[ORGANIZAR_N] = { N_("Pastas"), N_("Título"), N_("Artista") };
 
 const char *Biblioteca_nome_organizar(int modo)
 {
     return (modo >= 0 && modo < ORGANIZAR_N) ? NOME_ORGANIZAR[modo] : "?";
-}
-
-/* copia trocando o que não for ASCII por '?': a fonte de debug não desenha acento */
-static void copia_ascii(char *destino, size_t max, const char *origem)
-{
-    size_t k = 0;
-    for (const unsigned char *p = (const unsigned char *)origem; *p && k + 1 < max; p++) {
-        if (*p < 0x80)                destino[k++] = (char)*p;
-        else if ((*p & 0xC0) == 0xC0) destino[k++] = '?';   /* um '?' por caractere UTF-8 */
-    }
-    destino[k] = '\0';
 }
 
 /* comparação sem diferenciar maiúsculas (strcasecmp não é C11 puro) */
@@ -63,10 +52,10 @@ void Game_add_song(Game *g, const SongIni *ini, const char *nome_pasta, const ch
     if (!cresce((void **)&g->musicas, &g->cap_musicas, g->n_musicas, sizeof(InfoMusica))) return;
     InfoMusica *m = &g->musicas[g->n_musicas++];
     memset(m, 0, sizeof(*m));
-    copia_ascii(m->titulo, sizeof(m->titulo), ini->nome[0] ? ini->nome : nome_pasta);
-    copia_ascii(m->artista, sizeof(m->artista), ini->artista);
-    copia_ascii(m->charter, sizeof(m->charter), ini->charter);
-    copia_ascii(m->grupo, sizeof(m->grupo), grupo ? grupo : "");
+    Texto_copia(m->titulo, sizeof(m->titulo), ini->nome[0] ? ini->nome : nome_pasta);
+    Texto_copia(m->artista, sizeof(m->artista), ini->artista);
+    Texto_copia(m->charter, sizeof(m->charter), ini->charter);
+    Texto_copia(m->grupo, sizeof(m->grupo), grupo ? grupo : "");
     snprintf(m->rotulo_artista, sizeof(m->rotulo_artista), "%s - %s", m->artista[0] ? m->artista : "?", m->titulo);
     m->duracao_ms  = ini->duracao_ms;
     m->atraso_ms   = ini->atraso_ms;
@@ -74,30 +63,39 @@ void Game_add_song(Game *g, const SongIni *ini, const char *nome_pasta, const ch
     m->recorde_dif = -1;
 }
 
-void Game_set_record(Game *g, int musica, long pontos, int dif, int pct, bool fc)
+void Game_set_record(Game *g, int musica, long pontos, const char *nome, int instr, int dif, int pct, bool fc)
 {
     if (musica < 0 || musica >= g->n_musicas) return;
     InfoMusica *m  = &g->musicas[musica];
-    m->recorde     = pontos;
-    m->recorde_dif = dif;
+    m->recorde       = pontos;
+    Texto_copia(m->recorde_nome, sizeof(m->recorde_nome), nome ? nome : "");
+    m->recorde_instr = instr >= 0 && instr < INSTR_N ? instr : INSTR_GUITARRA;
+    m->recorde_dif   = dif;
     m->recorde_pct = pct;
     m->recorde_fc  = fc;
 }
 
-/* fim da partida: foi recorde? (só músicas de verdade; a demonstração não conta) */
+/* Fim da partida: foi recorde? (só músicas de verdade; a demonstração não
+ * conta). O recorde é da música: com vários jogadores, conta o melhor deles. */
 void Biblioteca_fim_partida(Game *g)
 {
-    g->novo_recorde = false;
-    if (g->musica < 0 || g->musica >= g->n_musicas) return;
+    Jogador *melhor = NULL;
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
+        Jogador *j = &g->jog[k];
+        j->novo_recorde = false;
+        if (j->ativo && (!melhor || j->pontos > melhor->pontos)) melhor = j;
+    }
+    if (!melhor || g->musica < 0 || g->musica >= g->n_musicas) return;
     InfoMusica *m = &g->musicas[g->musica];
-    const long pontos = (long)g->pontos;
+    const long pontos = (long)melhor->pontos;
     if (pontos <= m->recorde) return;
 
-    const int total = g->acertos + g->erros;
-    g->novo_recorde     = true;
-    g->recorde_anterior = m->recorde;
-    Game_set_record(g, g->musica, pontos, (int)g->dificuldade,
-                    total ? (100 * g->acertos + total / 2) / total : 0, g->erros == 0 && total > 0);
+    const int total = melhor->acertos + melhor->erros;
+    melhor->novo_recorde     = true;
+    melhor->recorde_anterior = m->recorde;
+    Game_set_record(g, g->musica, pontos, Game_player_name(g, (int)(melhor - g->jog)),
+                    (int)melhor->instrumento, (int)melhor->dificuldade,
+                    total ? (100 * melhor->acertos + total / 2) / total : 0, melhor->erros == 0 && total > 0);
     g->pedido        = PEDIDO_SALVAR_RECORDE;   /* o main.c grava o arquivo */
     g->pedido_indice = g->musica;
 }
@@ -185,8 +183,8 @@ void Biblioteca_monta_menu(Game *g)
 
     int n = 0;
     const bool na_raiz = g->pasta_atual[0] == '\0' || modo != ORGANIZAR_PASTAS;
-    g->itens_musicas[n++] = (ItemMenu){ "Organizar por", ID_ORGANIZAR, ITEM_OPCAO, false };
-    if (na_raiz) g->itens_musicas[n++] = (ItemMenu){ "Demonstracao (sem musica)", ID_DEMO, ITEM_BOTAO, false };
+    g->itens_musicas[n++] = (ItemMenu){ N_("Organizar por"), ID_ORGANIZAR, ITEM_OPCAO, false };
+    if (na_raiz) g->itens_musicas[n++] = (ItemMenu){ N_("Demonstração (sem música)"), ID_DEMO, ITEM_BOTAO, false };
 
     if (modo == ORGANIZAR_PASTAS) {
         for (int k = 0; k < g->n_pastas; k++)
@@ -206,9 +204,9 @@ void Biblioteca_monta_menu(Game *g)
                                                 ITEM_BOTAO, false };
     }
 
-    if (na_raiz) g->itens_musicas[n++] = (ItemMenu){ "Procurar musicas novas", ID_PROCURAR, ITEM_BOTAO, false };
-    g->itens_musicas[n++] = (ItemMenu){ na_raiz ? "Voltar" : "Voltar (pasta de cima)", ID_VOLTAR, ITEM_BOTAO, false };
-    g->menu_musicas = (Menu){ "Musicas", g->itens_musicas, n };
+    if (na_raiz) g->itens_musicas[n++] = (ItemMenu){ N_("Procurar músicas novas"), ID_PROCURAR, ITEM_BOTAO, false };
+    g->itens_musicas[n++] = (ItemMenu){ na_raiz ? N_("Voltar") : N_("Voltar (pasta de cima)"), ID_VOLTAR, ITEM_BOTAO, false };
+    g->menu_musicas = (Menu){ N_("Músicas"), g->itens_musicas, n };
     if (g->sel[TELA_MUSICAS] >= n) g->sel[TELA_MUSICAS] = n - 1;
 }
 

@@ -1,0 +1,195 @@
+# Ark Hero - Español
+# Lado izquierdo: el texto original (portugués). Lado derecho: la traducción.
+# Mantén cada %d, %s... en el mismo orden. Ver COMO_TRADUZIR.md.
+
+idioma = Español
+
+# menús
+Jogar = Jugar
+Configurações = Configuración
+Sair = Salir
+Controles = Controles
+Velocidade da pista = Velocidad de la pista
+Modo precisão = Modo precisión
+Penalidade (erro) = Penalización (error)
+Mostrar acertos = Mostrar aciertos
+Ajuste de tempo = Ajuste de tiempo
+Modo canhoto = Modo zurdo
+Mostrar FPS = Mostrar FPS
+Volume = Volumen
+Som de erro = Sonido de error
+Idioma = Idioma
+Teste de áudio = Prueba de audio
+Voltar = Volver
+Jogador = Jugador
+Verde = Verde
+Vermelho = Rojo
+Amarelo = Amarillo
+Azul = Azul
+Laranja = Naranja
+Palheta cima = Púa arriba
+Palheta baixo = Púa abajo
+Star power = Star power
+Whammy = Whammy
+Pausa = Pausa
+Analógico = Analógico
+Botões frontais = Botones frontales
+Restaurar padrão = Restaurar valores
+Carregar a música de teste = Cargar la canción de prueba
+Tocar / pausar = Tocar / pausar
+Continuar = Continuar
+Reiniciar = Reiniciar
+Sair para o menu = Salir al menú
+Jogar de novo = Jugar otra vez
+Fim da música = Fin de la canción
+Músicas = Canciones
+Organizar por = Ordenar por
+Pastas = Carpetas
+Título = Título
+Artista = Artista
+Demonstração = Demostración
+Demonstração (sem música) = Demostración (sin canción)
+Procurar músicas novas = Buscar canciones nuevas
+Voltar (pasta de cima) = Volver (carpeta de arriba)
+Sim = Sí
+Não = No
+Controle = Control
+
+# nombres del control
+Sul = Sur
+Leste = Este
+Oeste = Oeste
+Norte = Norte
+Esquerdo = Izquierdo
+Direito = Derecho
+Analóg. E = Analóg. I
+Analóg. D = Analóg. D
+
+# instrumentos y dificultades
+Guitarra = Guitarra
+Baixo = Bajo
+Rítmica = Rítmica
+Guitarra coop = Guitarra coop
+Teclado = Teclado
+Fácil = Fácil
+Médio = Medio
+Difícil = Difícil
+Expert = Experto
+
+# avisos
+Em breve = Pronto
+em breve = pronto
+Não consegui ler o chart = No pude leer el chart
+Essa parte do chart está vazia = Esa parte del chart está vacía
+Sem áudio: tocando com o metrônomo = Sin audio: con el metrónomo
+Procurando músicas... = Buscando canciones...
+Controles restaurados = Controles restaurados
+
+# lista de canciones
+um jogo de ritmo para o R36S = un juego de ritmo para la R36S
+Notas de exemplo com metrônomo, para testar = Notas de ejemplo con metrónomo, para probar
+recorde: %ld (%s %s, %d%%%s) = récord: %ld (%s %s, %d%%%s)
+chart: %s = chart: %s
+Pasta: entre para ver as músicas dela = Carpeta: entra para ver sus canciones
+←/→: por pasta, título (A-Z) ou artista = ←/→: por carpeta, título (A-Z) o artista
+Procura de novo em songs/ e no pastas.txt = Busca otra vez en songs/ y pastas.txt
+procurando músicas... %d encontrada(s) = buscando canciones... %d encontrada(s)
+nenhuma música em songs/ = ninguna canción en songs/
+pasta: %s = carpeta: %s
+%d música(s) = %d canción(es)
+
+# cargando y preparación
+Carregando = Cargando
+decodificando o áudio: %.0f%% = decodificando el audio: %.0f%%
+JOGADOR %d = JUGADOR %d
+teclado = teclado
+sem controle = sin control
+[%s] entra = [%s] entra
+fora desta música = fuera de esta canción
+conecte um controle = conecta un control
+instrumento = instrumento
+dificuldade = dificultad
+1 nota = 1 nota
+%d notas = %d notas
+PRONTO! = ¡LISTO!
+espera o teclado = espera el teclado
+
+# controles
+CONTROLE = CONTROL
+TECLADO = TECLADO
+sem controle: só o teclado = sin control: solo el teclado
+último botão apertado: %s = último botón pulsado: %s
+Jogador %d: aperte o novo botão ou tecla para = Jugador %d: pulsa el nuevo botón o tecla para
+mexa o analógico que vai ser o whammy = mueve el analógico que será el whammy
+(ou aperte um botão) = (o pulsa un botón)
+Esc cancela; sem resposta, cancela sozinho = Esc cancela; sin respuesta, se cancela solo
+
+# prueba de audio
+Sem dispositivo de áudio: o jogo segue mudo. = Sin dispositivo de audio: el juego sigue mudo.
+Saída: %s, buffer de %d frames (%.0f ms) = Salida: %s, buffer de %d frames (%.0f ms)
+Nenhuma música em %s = Ninguna canción en %s
+(notes.chart + song.ini + áudio) = (notes.chart + song.ini + audio)
+(%d faixa(s) com formato não suportado) = (%d pista(s) con formato no soportado)
+Decodificando... = Decodificando...
+Carregada: %.1f s de música em %.2f s (%.0fx) = Cargada: %.1f s de música en %.2f s (%.0fx)
+Erro: %s = Error: %s
+Pausado %s / %s = Pausado %s / %s
+Tocando %s / %s = Tocando %s / %s
+relógio cru %s  suave-cru: %+.1f ms = reloj crudo %s  suave-crudo: %+.1f ms
+
+# ayudas del pie de pantalla
+[%s] escolher  [%s] voltar  [←/→] página = [%s] elegir  [%s] volver  [←/→] página
+[%s] pausa  [%s] star power = [%s] pausa  [%s] star power
+[%s] ok  [%s] volta = [%s] ok  [%s] volver
+[↑/↓] muda  [%s] confirma  [%s] desfaz = [↑/↓] cambia  [%s] confirma  [%s] deshace
+[↑/↓] linha  [%s] ok  [%s] volta = [↑/↓] fila  [%s] ok  [%s] volver
+[←/→] cartão  [↑/↓] linha  [%s] ok  [%s] volta = [←/→] tarjeta  [↑/↓] fila  [%s] ok  [%s] volver
+J%d: [%s] de novo começa sem os outros = J%d: [%s] otra vez empieza sin los demás
+
+# durante la canción
+STAR = STAR
+STAR POWER! = ¡STAR POWER!
+ERROU = FALLO
+PERFEITO = PERFECTO
+BOM = BIEN
+PONTOS = PUNTOS
+COMBO = COMBO
+
+# resultados
+%ld pontos = %ld puntos
+Notas: %d / %d  (%d%%) = Notas: %d / %d  (%d%%)
+Maior combo: %d = Mayor combo: %d
+%d ms adiantado: tente Ajuste de tempo %+d = %d ms adelantado: usa Ajuste de tiempo %+d
+%d ms atrasado: tente Ajuste de tempo %+d = %d ms atrasado: usa Ajuste de tiempo %+d
+acertos no tempo certo (%+d ms em média) = aciertos a tiempo (%+d ms de media)
+NOVO RECORDE!  FULL COMBO!  (antes: %ld) = ¡NUEVO RÉCORD!  ¡FULL COMBO!  (antes: %ld)
+NOVO RECORDE!  (antes: %ld) = ¡NUEVO RÉCORD!  (antes: %ld)
+RECORDE! = ¡RÉCORD!
+FULL COMBO! = ¡FULL COMBO!
+notas %d%% = notas %d%%
+combo %d = combo %d
+
+# jugadores y cuentas
+Jogadores = Jugadores
+conta = cuenta
+modo = modo
+Convidado = Invitado
++ novo jogador = + nuevo jugador
+Nome do jogador %d = Nombre del jugador %d
+[%s] escreve  [%s] apaga = [%s] escribe  [%s] borra
+espaço = espacio
+apagar = borrar
+Esse nome já está jogando = Ese nombre ya está jugando
+Contas demais = Demasiadas cuentas
+todos prontos: escolha a música... = todos listos: elige la canción...
+recorde: %ld de %s (%s %s, %d%%%s) = récord: %ld de %s (%s %s, %d%%%s)
+Um controle desconectou: a partida pausou = Un control se desconectó: partida en pausa
+Pronto = Listo
+Escrever o nome = Escribir el nombre
+[%s] joga no teclado = [%s] juega con teclado
+modo guitarra = modo guitarra
+modo controle = modo control
+sem teclas = sin teclas
+teclas repetidas = teclas repetidas
+Ajuste as teclas em Controles = Configura las teclas en Controles
+[↑/↓] tecla  [%s] escreve  [%s] apaga = [↑/↓] tecla  [%s] escribe  [%s] borra

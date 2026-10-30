@@ -5,7 +5,10 @@
  * interessa ao jogo:
  *
  *   qualquer trilha      andamento (meta 0x51) e compasso (meta 0x58)
- *   "PART GUITAR"        as notas (ou "T1 GEMS", nos charts antigos do GH1/GH2)
+ *   "PART GUITAR"        guitarra (ou "T1 GEMS", nos charts antigos do GH1/GH2)
+ *   "PART BASS"          baixo        "PART RHYTHM"       guitarra rítmica
+ *   "PART GUITAR COOP"   coop         "PART KEYS"         teclado de 5 notas
+ *   (todas com o mesmo esquema de notas abaixo)
  *
  * Dentro da trilha da guitarra, cada dificuldade é uma faixa de notas MIDI:
  *
@@ -205,8 +208,9 @@ static bool dentro_sysex(const Intervalos *l, int dif, int tipo, uint32_t tick)
     return false;
 }
 
-static bool monta_guitarra(ArquivoChart *a, const Trilha *t, int nota_sp)
+static bool monta_instrumento(ArquivoChart *a, Pista_Dif *pistas, const Trilha *t, int nota_sp)
 {
+    (void)a;
     /* os marcadores separados: [d][0] força HOPO, [d][1] força palhetada; e o tap */
     Intervalos forca[DIF_N][2], tap;
     memset(forca, 0, sizeof(forca));
@@ -219,7 +223,7 @@ static bool monta_guitarra(ArquivoChart *a, const Trilha *t, int nota_sp)
     for (int i = 0; i < t->notas.n && ok; i++) {
         const Intervalo *iv = &t->notas.v[i];
         if (iv->nota == nota_sp) {                          /* star power: vale para todas */
-            for (int d = 0; d < DIF_N && ok; d++) ok = ChartFile_add_frase(&a->dif[d], iv->ini, iv->fim - iv->ini);
+            for (int d = 0; d < DIF_N && ok; d++) ok = ChartFile_add_frase(&pistas[d], iv->ini, iv->fim - iv->ini);
             continue;
         }
         for (int d = 0; d < DIF_N && ok; d++) {
@@ -231,7 +235,7 @@ static bool monta_guitarra(ArquivoChart *a, const Trilha *t, int nota_sp)
 
             /* aberta do Phase Shift: o verde dentro do SysEx de aberta */
             if (traste == 0 && dentro_sysex(&t->sysex, d, 1, iv->ini)) traste = BRUTA_ABERTA;
-            Pista_Dif *p = &a->dif[d];
+            Pista_Dif *p = &pistas[d];
             ok = ChartFile_add_nota(p, iv->ini, iv->fim - iv->ini, traste);
 
             /* marcadores que cobrem esta nota */
@@ -245,6 +249,17 @@ static bool monta_guitarra(ArquivoChart *a, const Trilha *t, int nota_sp)
     for (int d = 0; d < DIF_N; d++) { free(forca[d][0].v); free(forca[d][1].v); }
     free(tap.v);
     return ok;
+}
+
+/* o nome da trilha diz o instrumento; -1 = trilha que não interessa (bateria, voz, eventos) */
+static int instrumento_da_trilha(const char *nome)
+{
+    if (strcmp(nome, "PART GUITAR") == 0 || strcmp(nome, "T1 GEMS") == 0) return INSTR_GUITARRA;
+    if (strcmp(nome, "PART BASS") == 0)        return INSTR_BAIXO;
+    if (strcmp(nome, "PART RHYTHM") == 0)      return INSTR_RITMICA;
+    if (strcmp(nome, "PART GUITAR COOP") == 0) return INSTR_COOP;
+    if (strcmp(nome, "PART KEYS") == 0)        return INSTR_TECLADO;
+    return -1;
 }
 
 bool ChartFile_parse_mid(ArquivoChart *a, const unsigned char *dados, size_t tamanho, int nota_sp,
@@ -270,7 +285,7 @@ bool ChartFile_parse_mid(ArquivoChart *a, const unsigned char *dados, size_t tam
     a->corte_sustain = (uint32_t)(a->resolucao / 3);   /* no .mid toda nota tem duração: as curtas não são sustain */
     if (nota_sp <= 0) nota_sp = 116;
 
-    bool achou = false, ok = true;
+    bool achou = false, ok = true, lido[INSTR_N] = { false };
     for (uint32_t i = 0; i < n_trilhas && ok && r.p + 8 <= r.fim; i++) {
         if (memcmp(r.p, "MTrk", 4) != 0) break;
         r.p += 4;
@@ -282,9 +297,11 @@ bool ChartFile_parse_mid(ArquivoChart *a, const unsigned char *dados, size_t tam
         Trilha tr;
         memset(&tr, 0, sizeof(tr));
         ok = le_trilha(a, &t, &tr);
-        if (ok && !achou && (strcmp(tr.nome, "PART GUITAR") == 0 || strcmp(tr.nome, "T1 GEMS") == 0)) {
-            ok    = monta_guitarra(a, &tr, nota_sp);
-            achou = true;
+        const int ins = instrumento_da_trilha(tr.nome);
+        if (ok && ins >= 0 && !lido[ins]) {
+            ok        = monta_instrumento(a, a->dif[ins], &tr, nota_sp);
+            lido[ins] = true;
+            achou     = true;
         }
         free(tr.notas.v);
         free(tr.sysex.v);
@@ -296,7 +313,7 @@ bool ChartFile_parse_mid(ArquivoChart *a, const unsigned char *dados, size_t tam
         return false;
     }
     if (!achou) {
-        snprintf(erro, n_erro, "o MIDI nao tem a trilha PART GUITAR");
+        snprintf(erro, n_erro, "o MIDI nao tem guitarra, baixo, ritmica nem teclado");
         ChartFile_free(a);
         return false;
     }

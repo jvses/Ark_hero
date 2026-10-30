@@ -33,3 +33,6 @@
 compile_commands.json
 *.o
 *.swp
+
+# cache do Python (tools/textos.py)
+__pycache__/

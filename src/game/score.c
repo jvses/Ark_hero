@@ -16,33 +16,40 @@ static int botoes_na_nota(uint8_t mascara)
     return n;
 }
 
-int Score_multiplicador(const Game *g)
+int Score_multiplicador(const Jogador *j)
 {
-    int m = 1 + g->combo / COMBO_POR_MULT;
+    int m = 1 + j->combo / COMBO_POR_MULT;
     if (m > MULT_MAX) m = MULT_MAX;
-    return g->sp_ativo ? 2 * m : m;
+    return j->sp_ativo ? 2 * m : m;
 }
 
+/* cada evento conta para o jogador que o produziu */
 void Score_apply_events(Game *g)
 {
     for (int i = 0; i < g->n_eventos; i++) {
         const EventoJogo *e = &g->eventos[i];
-        const int mult = Score_multiplicador(g);
+        if (e->jogador < 0 || e->jogador >= GAME_MAX_JOGADORES) continue;
+        Jogador *j = &g->jog[e->jogador];
+        const int mult = Score_multiplicador(j);
         switch (e->tipo) {
         case EV_ACERTO:
         {
-            const int b = botoes_na_nota(g->chart.notas[e->nota].mascara);
-            g->pontos += PONTOS_POR_NOTA * (b > 0 ? b : 1) * mult;   /* a aberta vale como uma */
+            const int b = botoes_na_nota(j->chart.notas[e->nota].mascara);
+            j->pontos += PONTOS_POR_NOTA * (b > 0 ? b : 1) * mult;   /* a aberta vale como uma */
         }
             break;
         case EV_SUSTAIN:
-            g->pontos += PONTOS_SUSTAIN_POR_SEG * e->valor * mult;
+            j->pontos += PONTOS_SUSTAIN_POR_SEG * e->valor * mult;
             break;
         default:
             break;
         }
     }
-    const int novo = Score_multiplicador(g);
-    if (novo != g->multiplicador) g->mult_mudou_t = g->t_total;   /* o draw anima a troca */
-    g->multiplicador = novo;
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
+        Jogador *j = &g->jog[k];
+        if (!j->ativo) continue;
+        const int novo = Score_multiplicador(j);
+        if (novo != j->multiplicador) j->mult_mudou_t = g->t_total;   /* o draw anima a troca */
+        j->multiplicador = novo;
+    }
 }

@@ -56,12 +56,14 @@ set(ARKHERO_GAME_SRC
     src/game/chart.c
     src/game/chartfile.c
     src/game/game.c
+    src/game/jogadores.c
     src/game/judge.c
     src/game/menu.c
     src/game/midifile.c
     src/game/opcoes.c
     src/game/score.c
     src/game/songini.c
+    src/game/texto.c
 )
 
 add_executable(arkhero
@@ -72,6 +74,7 @@ add_executable(arkhero
     src/platform/carregador.c
     src/platform/musica.c
     src/draw/draw.c
+    src/draw/fonte.c
     src/draw/formas.c
     src/draw/pista.c
     ${ARKHERO_GAME_SRC}
@@ -80,7 +83,7 @@ add_executable(arkhero
 target_include_directories(arkhero PRIVATE src)
 # dr_mp3.h (um arquivo so; a implementacao entra no carregador.c). SYSTEM: os
 # avisos de dentro dele nao sao do jogo
-target_include_directories(arkhero SYSTEM PRIVATE third_party/dr_libs)
+target_include_directories(arkhero SYSTEM PRIVATE third_party/dr_libs third_party/stb)
 
 target_link_libraries(arkhero PRIVATE SDL3::SDL3)
 if(ARKHERO_AUDIO_STATIC)

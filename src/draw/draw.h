@@ -36,9 +36,13 @@ typedef struct {
 typedef struct {
     float       fps;
     int         capturando;             /* ação esperando botão novo, ou -1 */
+    int         captura_jogador;        /* de quem é o botão novo */
     double      captura_resta;          /* segundos */
+    int         jogador;                /* de quem são os rótulos abaixo (na tela de controles, o escolhido) */
     const char *pad[ACAO_N];            /* rótulo do botão de cada ação: "L1" */
     const char *tecla[ACAO_N];          /* rótulo da tecla de cada ação: "A" */
+    const char *controle[GAME_MAX_JOGADORES];   /* nome do controle de cada jogador (NULL = nenhum) */
+    const char *entra_pad[GAME_MAX_JOGADORES];  /* o Confirmar do controle de cada um (tela de preparação) */
     const char *ultimo;                 /* último botão apertado (diagnóstico) */
     const char *analogico;              /* analógico do whammy: "Esquerdo" / "Direito" */
     const char *frontais;               /* estilo dos botões frontais: "Auto (Nintendo)"... */
@@ -47,7 +51,7 @@ typedef struct {
     int         achadas;                /* músicas achadas até agora */
 } Hud;
 
-bool Draw_init(Draw *d, SDL_Renderer *ren, const char *pasta_imagens);
+bool Draw_init(Draw *d, SDL_Renderer *ren, const char *pasta_assets);   /* ".../assets/": images/ e fonts/ */
 void Draw_quit(Draw *d);
 void Draw_frame(const Draw *d, SDL_Renderer *ren, const Game *g, const Hud *h);
 

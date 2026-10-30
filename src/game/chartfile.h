@@ -12,7 +12,9 @@
  * Seções lidas:
  *   [Song]       Resolution (ticks por semínima), Offset (s)
  *   [SyncTrack]  "tick = B bpm*1000", "tick = TS num [expoente do denominador]"
- *   [EasySingle] [MediumSingle] [HardSingle] [ExpertSingle]
+ *   [<Dificuldade><Instrumento>], como [ExpertSingle] (guitarra), [HardDoubleBass]
+ *                (baixo), [EasyDoubleRhythm] (rítmica), [MediumDoubleGuitar]
+ *                (coop), [ExpertKeyboard] (teclado de 5 notas):
  *                "tick = N traste duracao" (0-4 = verde..laranja, 5 = inverte
  *                o HOPO, 6 = tap, 7 = aberta), "tick = S 2 duracao" (star power)
  *
@@ -25,6 +27,9 @@
 #include "game/chart.h"
 
 typedef enum { DIF_FACIL, DIF_MEDIO, DIF_DIFICIL, DIF_EXPERT, DIF_N } Dificuldade;
+
+/* as partes de 5 trastes que um chart pode ter (bateria e voz ficam de fora) */
+typedef enum { INSTR_GUITARRA, INSTR_BAIXO, INSTR_RITMICA, INSTR_COOP, INSTR_TECLADO, INSTR_N } Instrumento;
 
 typedef struct {
     uint32_t tick;
@@ -70,7 +75,7 @@ typedef struct {
     int            n_tempos, cap_tempos;
     Compasso      *compassos;
     int            n_compassos, cap_compassos;
-    Pista_Dif      dif[DIF_N];
+    Pista_Dif      dif[INSTR_N][DIF_N];
 } ArquivoChart;
 
 /* devolve false (e a mensagem em erro) se o texto não for um .chart utilizável */
@@ -88,11 +93,13 @@ bool   ChartFile_add_frase(Pista_Dif *d, uint32_t tick, uint32_t duracao);
 bool   ChartFile_finish(ArquivoChart *a, char *erro, size_t n_erro);
 void   ChartFile_free(ArquivoChart *a);
 double ChartFile_tempo(const ArquivoChart *a, uint32_t tick);   /* segundos, sem o offset */
-int    ChartFile_contar(const ArquivoChart *a, Dificuldade d);  /* notas (acorde = 1) */
+int    ChartFile_contar(const ArquivoChart *a, Instrumento i, Dificuldade d);  /* notas (acorde = 1) */
+bool   ChartFile_tem(const ArquivoChart *a, Instrumento i);                    /* alguma dificuldade com notas */
 
-/* o Chart da dificuldade d; atraso_s desloca todas as notas (song.ini "delay") */
-bool   Chart_from_file(Chart *c, const ArquivoChart *a, Dificuldade d, double atraso_s);
+/* o Chart de um instrumento numa dificuldade; atraso_s desloca as notas (song.ini "delay") */
+bool   Chart_from_file(Chart *c, const ArquivoChart *a, Instrumento i, Dificuldade d, double atraso_s);
 
 const char *Dificuldade_nome(Dificuldade d);   /* "Expert" ... */
+const char *Instrumento_nome(Instrumento i);   /* "Guitarra" ... */
 
 #endif

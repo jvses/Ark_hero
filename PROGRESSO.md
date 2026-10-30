@@ -738,6 +738,563 @@ já segurado, acorde no meio de um sustain longo).
 
 ---
 
+## Etapa 5: multijogador, instrumentos, som de erro, carga em aparelhos menores (2026-10-29)
+
+### Pedido (depois de testar a 4e no PC)
+
+- Conferir quantos núcleos o aparelho tem antes de dividir a carga: o que
+  acontece com 1 ou 2 núcleos? Criar meios de contornar.
+- Multijogador: até 4 jogadores, cada um com a sua configuração de
+  controle, também no aarch64. A ideia é ser uma alternativa ao Clone Hero
+  para PCs fracos.
+- Implementar o baixo e as outras partes que o chart tiver.
+- Opção para ligar o som de erro do instrumento.
+- (O desenho das notas não precisa de otimização: FPS constante no R36S.)
+- Testes futuros: EmuELEC (gamestick Y7, TV box) e ArkOS clássico (R36S,
+  R35S).
+
+### O que foi feito
+
+**Instrumentos** (`game/chartfile.c`, `game/midifile.c`): o leitor guarda
+as cinco partes de 5 trastes: guitarra, baixo, rítmica, guitarra coop e
+teclado. No `.chart` são as seções `Single`, `DoubleBass`, `DoubleRhythm`,
+`DoubleGuitar` e `Keyboard`; no `.mid`, as trilhas `PART GUITAR` (ou
+`T1 GEMS`), `PART BASS`, `PART RHYTHM`, `PART GUITAR COOP` e `PART KEYS`.
+Um chart sem guitarra (só baixo, por exemplo) agora também abre. Na
+biblioteca de teste: guitarra em 78 músicas, baixo em 66 e rítmica em 9.
+
+**Jogadores** (`game/game.h`): tudo o que é de uma pessoa (a pista, o
+placar, o star power, as estatísticas) saiu do `Game` e foi para um
+`Jogador`, e o `Game` tem quatro (`g->jog[0..3]`). O tempo, a pausa e a
+música continuam no `Game`. O juiz e a pontuação recebem o jogador; cada
+evento diz de quem é. O `Game_update` recebe os botões de cada um: nos
+menus vale qualquer jogador, mas na preparação e na pista cada um só mexe
+no que é seu. Qualquer jogador pausa. A partida acaba quando as notas de
+todos acabam.
+
+**Tela de preparação** (no lugar da escolha de dificuldade): uma coluna por
+jogador. Funciona assim:
+- o jogador 1 já está dentro; os outros entram com Confirmar no próprio
+  controle;
+- Cima/Baixo escolhe a linha (instrumento ou dificuldade); Esq/Dir troca o
+  valor, só entre as partes que o chart tem;
+- Confirmar marca "pronto"; Voltar desfaz o pronto e, apertado de novo,
+  tira o jogador (o jogador 1 volta para a lista);
+- quando todos os que entraram estão prontos, a partida começa. Se alguém
+  entrou e largou o controle, o jogador 1 confirma de novo e começa sem ele;
+- as escolhas e quem entrou continuam para a próxima música.
+
+Sozinho, o número de apertos é o mesmo de antes.
+
+**Controles** (`platform/input.c`): cada controle conectado vai para o
+primeiro espaço livre (o primeiro é o jogador 1). Cada jogador tem um
+perfil: os botões, o analógico do whammy e o estilo dos frontais. Os
+perfis ficam em `controles.cfg` (J1, o mesmo arquivo de antes),
+`controles2.cfg`, `controles3.cfg` e `controles4.cfg`. A tela de Controles
+ganhou o item "Jogador" (J1..J4) e mostra o controle daquele jogador; o
+remapeamento só aceita o botão do controle dele (ou o teclado). Teclado
+para dois no PC: o J2 usa H J K L Ç nos trastes, N para star power, M para
+whammy, Backspace para pausar e voltar, P para confirmar, I e , (vírgula)
+para cima e baixo, U e O para os lados. J3 e J4 começam sem teclas.
+
+**Pistas lado a lado** (`draw/pista.c`, `draw/draw.c`): com 2, 3 ou 4
+jogadores, as pistas encolhem (base de 300, 205 e 155 px) e cada uma tem a
+borda da cor do jogador (rosa, laranja, verde, azul). Em cima de cada pista
+aparece quem é e o que toca; embaixo, pontos, multiplicador, combo e a
+barra de star power. O resultado sai em colunas, e o recorde da música fica
+com o melhor jogador (agora guardado também com o instrumento). Com um
+jogador, o visual é o de antes.
+
+**Som de erro** (Configurações > "Som de erro", desligado por padrão): ao
+errar uma nota ou apertar sem nota, o instrumento "engasga": um ruído
+abafado com um tom grave que cai, gerado por código (`Audio_make_miss`).
+O do baixo é mais grave. Ele toca num segundo dispositivo lógico de áudio,
+que a SDL mistura com a música; o relógio da música não muda. Conferido
+pela saída do driver `disk` da SDL: o efeito entra na hora certa e os
+cliques do metrônomo continuam no lugar.
+
+**Carga em aparelhos menores** (`platform/carregador.c`):
+- **1 núcleo:** uma thread só, como antes do paralelo: funciona, só demora
+  mais (no PC, a Rascal Flatts levou 3,9 s em vez de 1,2 s, com o áudio
+  idêntico byte a byte).
+- **2 núcleos:** duas threads. O risco era a decodificação roubar o
+  processador da tela e do som. Agora as threads da carga (e a da procura
+  de músicas) rodam com **prioridade baixa**: o sistema dá a vez para as
+  outras primeiro.
+- **Pouca RAM:** a soma em 32 bits ocupa o dobro da música pronta. Se ela
+  passar de 1/4 da RAM, a soma é feita direto em 16 bits ("modo
+  econômico"). Na Rascal Flatts, 0,0016% das amostras saem diferentes, só
+  onde a mistura estoura. `ARKHERO_ECONOMICO=1` força o modo, para testar.
+  A música anterior agora sai da memória antes da carga da nova (antes, no
+  pico, ficavam as duas).
+- O log mostra, no começo, o número de núcleos e a RAM; cada carga diz
+  quantas threads usou e se somou em 32 ou 16 bits.
+
+**Testes:** 36 no `test_game`. Os novos cobrem dois jogadores (guitarra e
+baixo) com placares e penalidades separados, a preparação sem os outros,
+um chart só de baixo, as cinco partes do `.chart` e o baixo no `.mid`.
+Passam no PC (com ASan e UBSan) e no aarch64. O jogador automático tocou
+as 78 músicas com um jogador por instrumento existente: 153 partes,
+148.875 notas, full combo em todas, zero penalidades, sem erro de memória.
+
+### Como testar
+
+- **Dois no PC:** um no teclado de sempre (A S D F G) e outro em H J K L Ç;
+  ou dois controles. Escolha uma música; na preparação, o J2 entra com P
+  (ou com o botão de baixo do controle dele).
+- **Baixo:** numa música com baixo, Cima na preparação e Esq/Dir.
+- **Som de erro:** Configurações > Som de erro > Sim.
+- **No R36S:** a carga da Rascal Flatts (o log diz threads e núcleos), e se
+  a tela de carga continua animada enquanto decodifica.
+
+### Compatibilidade com sistemas mais antigos (análise)
+
+O binário de hoje exige a **glibc 2.34**. Isso não vem do código do jogo:
+vem do container, que é Debian 12 (glibc 2.36). A partir da 2.34, as
+funções de thread e de `dlopen` mudaram de versão, e tudo o que é compilado
+ali (a SDL3 também) passa a exigir a 2.34 ou mais nova.
+
+- **dArkOS** (o seu R36S de hoje): Debian 12, glibc 2.36: funciona.
+- **ArkOS clássico** (R36S, R35S): pelo que sei, é baseado no Ubuntu 19.10,
+  com glibc 2.30 (confira com `ldd --version`): **não abriria** ("version
+  GLIBC_2.34 not found" no log).
+- **EmuELEC:** depende da versão; `ldd --version` no terminal do aparelho
+  diz qual é.
+
+O caminho: compilar num container mais antigo, com glibc 2.28 (Debian 10).
+Um binário feito com uma glibc velha roda nas mais novas, então um build só
+serviria para todos. Os cuidados são: o CMake do Debian 10 é velho demais
+para a SDL3 (instalar um mais novo pelo pip), e a SDL3 só com os backends
+de console (KMSDRM e ALSA). Fica para a próxima etapa, antes do teste
+nesses aparelhos.
+
+### Pendências
+
+- O controle vai para o primeiro espaço livre na ordem em que conectou. Se
+  um sistema expuser um "controle fantasma" (no R36S só aparece um, pelo
+  log), o controle de verdade cairia no J2. A tela de preparação mostra o
+  nome do controle de cada espaço, o que ajuda a perceber.
+- Guitarra coop e teclado não têm nenhuma música na biblioteca de teste:
+  só os testes com charts montados à mão os cobrem.
+- O som de erro toca também na nota perdida (não só no aperto errado), já
+  que não há como silenciar a faixa da guitarra: as faixas são misturadas
+  numa só na carga.
+
+---
+
+## Etapa 5b: teclado dividido, teclas exclusivas, som de erro, idiomas (2026-10-29)
+
+### Pedido (depois de jogar a etapa 5 no PC com um amigo)
+
+- Liso, 60 FPS cravados no PC.
+- A ideia era jogar em 4 (um no controle, três no teclado), mas só deu para
+  2: sem controle, os jogadores 3 e 4 não tinham como entrar.
+- Apertar o vermelho zerava o combo: a tecla que o J2 pegou continuava no
+  J1, e os dois recebiam o mesmo aperto. As teclas devem ser exclusivas
+  entre os jogadores.
+- Com um teclado só, a preparação (instrumento, dificuldade) deve ser um
+  jogador de cada vez, pelas setas e o Enter. Quem tem controle continua
+  independente.
+- O som de erro não tocou.
+- Suporte a outros idiomas, de um jeito que outras pessoas possam alterar e
+  acrescentar traduções.
+
+### O que os arquivos mostraram
+
+- `controles.cfg` (J1) tinha A S D F G; o `controles2.cfg` (J2), A S J K L:
+  o S do amigo também era o vermelho do J1, que levava a penalidade. O W do
+  J3 (vermelho) também era o whammy do J1.
+- Os J3 e J4 tinham teclas nos trastes (Q W E R T e 4 5 6 7 8), mas as
+  teclas de menu (Confirmar, setas) não são remapeáveis, e eles começam sem
+  nenhuma: sem controle, nunca conseguiam entrar.
+- `opcoes.cfg`: `som_erro = 0`. A opção estava desligada (as opções só são
+  gravadas ao sair das Configurações, então ela nunca foi ligada).
+
+### O que foi feito
+
+**Teclas exclusivas** (`platform/input.c`): uma tecla de jogo é de um
+jogador só. Ao mapear uma tecla que outro jogador usava, ela sai de lá (o
+log diz de quem). Os arquivos antigos com tecla repetida são arrumados ao
+abrir o jogo: fica com quem a escolheu de propósito (a tecla padrão do J1
+perde para a escolhida pelo J2, J3 ou J4). Com os seus arquivos: A e S
+ficam com o J2 e o W com o J3, e o J1 perde essas três no teclado (no
+controle, nada muda).
+
+**O teclado como um aparelho dividido**: as teclas de menu (setas, Enter,
+Esc) deixaram de ser do J1 e passaram a ser do teclado, entregues à parte
+(`Input_frame`). Um jogador sem controle e com teclas nos trastes é um
+"jogador de teclado" (o main.c avisa o jogo a cada frame). Os J2 a J4
+começam sem teclas: quem vai jogar no teclado escolhe as suas em Controles >
+Jogador.
+
+**Preparação com o teclado dividido** (`game/game.c`):
+- quem vira jogador de teclado (mapeou teclas) já entra; depois continua
+  dentro de uma música para a outra, como os de controle;
+- o teclado atende um jogador de teclado por vez, na ordem (J1, J2...), com a
+  etiqueta "vez do teclado" na coluna dele: as setas escolhem, **Enter** =
+  pronto (a vez passa ao próximo), **Esc** = esse não joga esta música;
+- sem ninguém na vez: Esc desfaz o último pronto, Enter traz de volta quem
+  tinha saído;
+- os jogadores de controle continuam cada um no seu, como antes;
+- sem nenhum jogador de teclado, as teclas de menu valem como as do J1 (o
+  jeito de sempre).
+
+Exemplo com você no controle e três no teclado: mapeie as teclas do J2, J3 e
+J4 em Controles; na preparação, o teclado configura o J2, Enter, o J3,
+Enter, o J4, Enter; você confirma no controle e a partida começa com 4.
+
+**Som de erro**: além de ligar a opção, ele foi refeito para aparecer por
+cima da música. Antes era um tom grave (98 Hz) que alto-falantes pequenos
+mal tocam; agora são dois dentes de serra a um semitom (a dissonância soa
+"errado") com um chiado no ataque. Tem cerca de 6 dB a mais acima de 300 Hz.
+Ao ligar a opção, ele toca uma vez, para você ouvir como é. O log de cada
+partida diz se a opção estava ligada e quantas vezes o som tocou.
+
+**Idiomas** (`game/texto.c`, `assets/lang/`):
+- o texto em português é a chave: no código, `T("Jogar")` devolve a tradução
+  do idioma escolhido, ou o próprio texto se faltar; textos em tabelas (os
+  menus) são marcados com `N_()` e traduzidos na hora de desenhar;
+- cada idioma é um arquivo `assets/lang/<codigo>.txt`, uma linha por texto
+  (`Jogar = Play`); a opção Configurações > Idioma lista os arquivos que
+  existem, e a escolha fica salva em `opcoes.cfg` (`idioma = en`);
+- vieram `en.txt` (inglês) e `es.txt` (espanhol), completos (139 textos);
+- segurança: se os `%d`/`%s` da tradução não baterem com os do original, a
+  linha é ignorada (um `%s` no lugar de um `%d` derrubaria o jogo);
+- acentos: a fonte ainda é só ASCII, então `é` vira `e`, `ñ` vira `n`, e o
+  ¿ e o ¡ somem. Os nomes de música também ganharam isso (antes, acento
+  virava `?`);
+- `tools/textos.py` acha todos os textos do código e confere cada idioma (o
+  que falta, o que sobra, os `%d/%s` errados); `tools/textos.py novo fr
+  Francais` cria um idioma novo com todos os textos para traduzir; o
+  `assets/lang/COMO_TRADUZIR.md` explica o formato.
+
+**Testes:** 39 no `test_game` (novos: o teclado dividido com 4 jogadores, o
+teclado sem jogadores de teclado e o J1 sem controle, e as traduções: busca,
+texto que falta, `%d/%s` diferentes, acentos e a opção salva). As teclas
+exclusivas foram conferidas num programa à parte com uma cópia dos seus
+arquivos de controle.
+
+### Como testar
+
+- **4 jogadores, 1 controle:** Configurações > Controles > Jogador: J2 e
+  mapeie os trastes dele; o mesmo para o J3 e o J4. Escolha uma música: o
+  teclado atende o J2, o J3 e o J4 em ordem (Enter em cada um), e você
+  confirma no controle.
+- **Penalidade cruzada:** o amigo aperta o vermelho dele; o seu combo não
+  pode mudar.
+- **Som de erro:** Configurações > Som de erro > Sim: deve tocar na hora.
+- **Idioma:** Configurações > Idioma > English / Español.
+
+### Pendências
+
+- Depois de jogar a demonstração (que é só do J1), os jogadores de teclado
+  ficam fora: voltam com Enter na preparação.
+- O som de erro toca também na nota perdida, e a música não silencia a
+  guitarra (as faixas são misturadas numa só na carga). Separar a faixa da
+  guitarra é um passo próprio.
+- Alfabetos não latinos precisam de uma fonte TrueType.
+
+---
+
+## Etapa 5c: a fonte do jogo, com acentos (2026-10-29)
+
+### Pedido
+
+Depois de ver os menus e os idiomas da 5b: usar a fonte que você baixou
+(`assets/terminal_16_unicode.zip`, "Terminal 16 Unicode") no lugar da fonte de
+debug da SDL, no estilo do jogo, para os acentos e a pontuação aparecerem.
+
+### A fonte
+
+- É uma fonte de pixel (feita no Bits'n'Picas), monoespaçada, desenhada numa
+  grade de **12x16** por caractere: 14 px acima da linha de base, 2 abaixo.
+- Tem o ASCII, todo o latim com acentos (á, ç, ã, ñ, ¿, ¡...), boa parte do
+  grego e do cirílico, e as setas ← ↑ → ↓ e ▲ ▼. Não tem ★, … nem —.
+- Ela só fica nítida em múltiplos inteiros do tamanho dela: reduzida pela
+  metade (para o 8x8 da fonte de antes) fica ilegível (testado).
+- **Origem e licença:** "Terminal 16 Unicode", de artdzyk, baixada de
+  https://www.dafont.com/pt/terminal-16-unicode.font, onde a licença está
+  como **"100% Grátis"** (o filtro de fontes livres do dafont). O arquivo em
+  si não traz texto de licença. O registro fica em `assets/fonts/FONTE.txt`,
+  que o pacote copia para `licencas/`.
+
+### O que foi feito
+
+**Desenho** (`src/draw/fonte.c`, novo): o `stb_truetype` (um arquivo só,
+domínio público ou MIT, em `third_party/stb/`, fixado num commit) lê a fonte
+uma vez, no `Draw_init`, e desenha cada caractere numa célula de uma
+textura. Cada letra na tela passa a ser a cópia de um pedaço dessa textura,
+ampliada sem suavizar (`SDL_SCALEMODE_NEAREST`), sempre em escala inteira e
+em posição inteira, para o pixel não "tremer". O stb usa a memória e a
+matemática da SDL (nenhuma biblioteca a mais no pacote). O texto é UTF-8; o
+que a fonte não tiver vira `?`. Sem o arquivo da fonte, o jogo usa a de
+debug, esticada para a mesma célula, e o layout não quebra.
+
+**As telas, refeitas para 12x16** (`src/draw/draw.c`): os textos pequenos
+(8x8) e os de menu (16x16) agora usam a fonte no tamanho 1 (12x16); os
+títulos, o tamanho 2; o "ARK HERO", o 3. O que mudou de lugar:
+- a preparação virou uma grade 2x2 de cartões de 300 px (com 146 px, uma
+  coluna só cabia 12 letras, pouco para "< Guitarra coop >");
+- as dicas do rodapé ficaram mais curtas (cabem ~52 letras) e usam setas no
+  lugar de "Esq/Dir" e "Cima/Baixo"; o que passar da largura é cortado com
+  "..", em qualquer idioma;
+- o placar de vários jogadores ganhou duas linhas embaixo de cada pista, e
+  some na pausa e no fim (o resultado mostra os números);
+- o painel do resultado, o do teste de áudio e o da captura de botão
+  ficaram mais largos; textos longos (nomes de música, de controle, do
+  áudio) são cortados sem partir um acento no meio.
+
+**Português com acento**: os textos do jogo passaram a ser escritos certo
+("Configurações", "Música", "Não", "Fácil"...). Como eles são as chaves das
+traduções, o `en.txt` e o `es.txt` foram refeitos (148 textos cada); o
+espanhol agora mostra ¿ e ¡. Os nomes de música também mantêm os acentos, e
+`song.ini` antigos gravados em Latin-1 (um "é" num byte só) são convertidos.
+O direcional aparece como setas (↑ ↓ ← →) e os frontais (Sul, Leste...)
+são traduzidos.
+
+**Ferramentas**: o `tools/textos.py` passou a ler os acentos do código
+certo; o `package_port.sh` inclui a licença do stb_truetype e não leva
+arquivos `.zip` de `assets/`.
+
+**Testes**: 39 no `test_game`, no PC (ASan e UBSan) e no aarch64. As telas
+foram conferidas em capturas, nos três idiomas.
+
+### Pendências
+
+- A página do autor diz que a fonte é "uma versão Unicode da fonte Terminal
+  12x16 do MS-DOS" (a Terminal é da Microsoft). Para um jogo gratuito o
+  risco é baixo, e o autor a liberou como 100% grátis; se um dia o jogo for
+  vendido ou entrar numa loja, vale trocar por uma fonte de pixel com licença
+  OFL ou domínio público explícito.
+- O `assets/terminal_16_unicode.zip` continua na pasta (é o seu download);
+  o jogo usa a cópia extraída em `assets/fonts/terminal16unicode.ttf`, e o
+  pacote não leva o zip.
+- No R36S, conferir o FPS com o texto novo (cada letra virou uma cópia de
+  textura; na teoria é o mesmo custo da fonte de debug).
+
+---
+
+## Etapa 6: tela de jogadores, contas, controle que some, modo guitarra (2026-10-30)
+
+### Pedido (depois de testar a 5c no R36S e no PC)
+
+- No R36S: liso, a carga caiu muito (`tests/log1.txt` e `log2.txt`: 3 faixas
+  em 5,6 s, 59,9 FPS o tempo todo, 2 jogadores sem engasgo), o som de erro
+  tocou. Teste com 4 no PC e com uma guitarra (reconhecida como controle de
+  Xbox).
+- Escolher a quantidade de jogadores era pouco intuitivo: no PC começava com
+  os 4 e era preciso Esc para tirar cada um.
+- Se o controle do J1 desconecta, nada se reorganiza: só reconectando ele.
+- Um par de controles sem fio chama L2/R2 de Select/Start: um acorde fechava
+  o jogo. No R36S, esse par nem foi reconhecido.
+- Pedidos: seleção de jogadores explícita antes de jogar (como no Clone
+  Hero); contas com nome salvas no aparelho, com um "convidado" para vários;
+  remanejo quando um controle some ou um jogador sai; modo guitarra (com
+  palhetada); modo prática (velocidade, seções, loop A-B).
+
+### O que foi feito
+
+**Tela de jogadores** (`game/jogadores.c`, nova), entre "Jogar" e a lista de
+músicas:
+- um cartão por jogador. Quem tem controle: Confirmar entra, Esq/Dir troca a
+  conta, Confirmar de novo = pronto; Voltar desfaz e, de novo, sai;
+- quem joga no teclado: o teclado atende um cartão por vez (Cima/Baixo troca
+  de cartão), com as mesmas teclas; ficar pronto passa a vez ao próximo;
+- todos prontos: uma barra de 1,2 s e a lista de músicas (dá tempo de mais
+  alguém entrar, o que cancela a contagem);
+- **quem entrou aqui joga as próximas músicas**: a preparação de cada música
+  não pergunta de novo quem joga, só o instrumento e a dificuldade. Lá, Esc
+  ainda deixa alguém de fora só daquela música. Voltar da lista de músicas
+  leva de volta para esta tela;
+- o J1 já começa dentro, e os de teclado não entram mais sozinhos (era o que
+  obrigava a apertar Esc em cada um).
+
+**Contas**: "Convidado" (vários podem usar ao mesmo tempo) e contas com nome
+(cada uma com um jogador por vez), em `conf/arkhero/jogadores.txt`, um nome
+por linha. "+ novo jogador" abre um teclado na tela (letras, acentos do
+português e do espanhol, números; maiúsculas/minúsculas, apagar, OK), que
+cada um usa com o próprio controle. A última conta de cada jogador fica
+salva nas opções. O nome aparece nos cartões, no placar, no resultado e no
+recorde da música ("recorde: 104758 de João").
+
+**Controle que some**: o jogo sabe, a cada frame, o aparelho de cada jogador.
+- na tela de jogadores, quem perdeu o aparelho sai;
+- na preparação, fica fora daquela música;
+- na partida, ela pausa ("Um controle desconectou"); ligando outro, ele cai
+  no primeiro espaço livre (o do jogador que perdeu) e a partida continua;
+- o papel que era sempre do J1 (voltar para a lista, começar sem os
+  outros) passou para o **líder**: o primeiro jogador que ainda tem aparelho.
+
+**Controles problemáticos**: Select+Start não fecha mais o jogo quando um
+desses dois é traste no perfil do jogador. O jogo também lê mapeamentos
+extras de `conf/arkhero/gamecontrollerdb.txt`, o script do port aponta a
+SDL para o banco de controles do PortMaster, e um joystick sem mapeamento
+aparece no log com o nome e o GUID (para escrever a linha dele).
+
+**Modo guitarra** (`judge.c`, `Judge_guitarra`), escolhido **por jogador** em
+Controles > Modo de jogo (fica no perfil do controle, junto dos botões; a
+palhetada voltou para a lista de Controles):
+- palhetada com os trastes certos acerta. Nota simples: vale o traste mais
+  alto segurado (pode ancorar nos de baixo). Acorde: os exatos. Aberta:
+  nenhum traste;
+- a palhetada pode vir até 50 ms antes dos trastes;
+- HOPO: com o combo de pé, trocar de traste já toca. Tap: sempre. Uma
+  palhetada até 100 ms depois de um HOPO tocado assim é ignorada;
+- palhetada sem nota é erro (segue a opção "Penalidade");
+- o traste de um sustain ainda tocando não atrapalha a nota de cima.
+
+**Testes**: 43 no `test_game` (novos: tela de jogadores com teclado e conta
+nova, controle desconectando, modo guitarra, folga e ancoragem), no PC com
+ASan e UBSan. O jogador automático tocou as 78 músicas nos **dois** modos
+(no da guitarra, palhetando as notas comuns e martelando os HOPO): 148.875
+notas, full combo e zero penalidades em cada um.
+
+### Como testar
+
+- Jogar: a tela de jogadores. Sozinho, Confirmar duas vezes (entra já está;
+  pronto) e a lista aparece. Com mais gente, cada um entra no seu controle.
+- Contas: Esq/Dir até "+ novo jogador", Confirmar, escrever, OK.
+- Desligar o controle do J1 na preparação: o J2 começa sozinho.
+- Guitarra: Controles > Jogador (o da guitarra) > Modo de jogo: Guitarra, e
+  mapear os trastes e a palheta (Palheta cima/baixo).
+- Os controles do par sem fio: Select+Start (L2+R2) não deve mais fechar.
+- No R36S: Ajuste de tempo **+40 ms** (os dois logs sugerem de novo).
+
+---
+
+## Etapa 6b: menus pela guitarra, jogadores presos ao aparelho, perfis por conta (2026-10-30)
+
+### Pedido (depois de testar a 6 no PC com a guitarra)
+
+- A guitarra funcionou bem, sem perda de desempenho. Antes do modo prática:
+- **menus pela guitarra**: tirar o máximo de interações com Esq/Dir (a
+  guitarra não tem). O verde numa opção entra num "modo de escolha" daquela
+  opção, e aí se escolhe. Assim dá para usar o jogo todo sem teclado,
+  mantendo o teclado funcionando;
+- **controle que some na tela de jogadores**: o jogador continuava lá, e só
+  saía selecionando com o teclado e apertando Esc (impossível num portátil
+  ou game stick sem teclado). O jogador sem controle deve sumir sozinho, e
+  quem vai dividir o teclado deve ser ajustado à mão, com um teclado, antes
+  de valer;
+- **perfil na conta**: o mapeamento e o modo (controle/guitarra) ficam na
+  conta do jogador, não no número (J1..J4). O convidado usa os mapeamentos
+  padrão de cada número;
+- o modo controle/guitarra sai das Configurações e vai para a tela de
+  jogadores.
+
+### O que foi feito
+
+**Modo de escolha** (todos os menus, `game.c`): um tipo novo de item,
+`ITEM_VALOR` (velocidade, ajuste de tempo, volume, idioma e o Jogador da
+tela de controles). Confirmar (o verde) entra no modo de escolha: a linha
+fica ciano, o valor ganha ▲▼, Cima/Baixo (a palhetada) mudam, Confirmar
+fica e Voltar (o vermelho) desfaz. As opções Sim/Não e as de poucos valores
+(analógico, botões frontais, organizar as músicas) trocam direto no
+Confirmar. Esq/Dir continuam mudando direto, para quem tem (teclado,
+direcional). Segurar Cima/Baixo repete e, depois de 2 s, corre (a lista de
+músicas inteira sem Esq/Dir); segurando, a lista para no fim, e um toque dá
+a volta.
+
+**Os cartões viraram listas** (tela de jogadores e preparação): Cima/Baixo
+escolhe a linha, Confirmar entra no modo de escolha dela (ou executa),
+Voltar desfaz, depois desfaz o pronto e, de novo, sai. O cursor começa no
+"Pronto": com a mesma escolha de antes, um Confirmar basta.
+- tela de jogadores: **conta** (modo de escolha), **modo** (controle /
+  guitarra, troca direto), **Controles** (abre a tela de controles daquele
+  jogador e volta para cá, sem tirar o pronto dos outros) e **Pronto**;
+- preparação: **instrumento**, **dificuldade** (os dois com modo de
+  escolha) e **Pronto**; embaixo, as notas e o modo.
+
+**Cada jogador preso ao seu aparelho**:
+- entra pelo controle do seu espaço, ou pelo teclado (`Jogador.no_teclado`);
+- quem é de controle e perde o controle **sai sozinho** da tela de
+  jogadores. Não vira mais jogador de teclado (era o que acontecia: o J1
+  tinha teclas padrão);
+- o teclado só entra num cartão **sem controle**, com Enter. Esq/Dir escolhe
+  o cartão (a etiqueta "teclado" mostra qual), e ele atende um por vez;
+- para ficar pronto, quem está no teclado precisa de teclas nos trastes e de
+  nenhuma tecla repetida com outro jogador de teclado. Senão, a linha
+  Controles ganha um "!", o cartão diz "sem teclas" ou "teclas repetidas",
+  e o Confirmar avisa "Ajuste as teclas em Controles";
+- as teclas de jogo só chegam a quem está no teclado (antes chegavam a todo
+  perfil que tivesse a tecla, mesmo jogando no controle);
+- um controle novo pula os espaços de quem está no teclado;
+- quem apertou "Jogar" já entra (o controle dele, ou o teclado no primeiro
+  cartão sem controle). Ninguém mais começa dentro sem ter apertado nada;
+- sair não fecha a tela: com a sessão vazia, mais um Voltar vai para o menu.
+
+**Perfis por conta** (`input.c`, `Input_use_account`): cada conta tem o seu
+perfil (botões, teclas, analógico, frontais, modo) em
+`conf/arkhero/contas/<código>.cfg` (o código vem do nome, porque nomes com
+acento podem dar problema no cartão SD; a primeira linha do arquivo diz de
+quem é). O convidado usa o perfil do número, como antes
+(`controles.cfg`, `controles2.cfg`...), com as teclas padrão do J1. Uma conta
+sem arquivo usa o perfil do convidado, e o arquivo dela nasce na primeira
+mudança (mudar o modo, remapear). O main.c troca o perfil do espaço quando a
+conta muda (inclusive enquanto se passa pelas contas, para mostrar o modo de
+cada uma), e quem sai da sessão volta ao convidado. A tela de controles
+mostra de quem é ("J2 Ana").
+
+**Teclado da tela no modo guitarra**: sem Esq/Dir, a palhetada anda tecla por
+tecla, na ordem de leitura (segurar acelera; para trás desde o A cai no OK).
+Com setas, a grade de sempre.
+
+**Outros**: o Esc do teclado pausa a partida (as teclas de jogo agora são só
+de quem está no teclado); a demonstração usa o primeiro jogador da sessão;
+na preparação sem ninguém no teclado, as teclas de menu ajudam o líder (no
+PC, quem joga no controle usa o Enter); o rodapé só mostra as teclas
+("Sul/Enter") depois que alguém usou o teclado (no R36S, nunca).
+
+**Testes**: 47 no `test_game` (novos: modo de escolha nos menus, quem some
+sai, teclado só em cartão livre, linhas de modo e controles, teclado da
+tela na guitarra; atualizados: preparação em linhas, lista que acelera e
+para no fim), no PC com ASan e UBSan e no aarch64. Um teste à parte do
+`input.c` (eventos de teclado sintéticos): teclas só para quem está no
+teclado, perfil da conta criado na primeira mudança e lido de volta, tecla
+remapeada saindo de outro jogador de teclado, tecla repetida detectada. O
+jogador automático: 78 músicas, 148.875 notas, zero problemas nos dois
+modos. Traduções completas (166 textos em en e es).
+
+### Como testar
+
+- Tudo pela guitarra: palhetada para andar, verde para entrar/escolher,
+  vermelho para voltar/desfazer. Configurações > Velocidade: verde, palheta,
+  verde.
+- Tela de jogadores: desligar um controle de quem entrou (ele some). No PC,
+  Enter num cartão sem controle põe um jogador de teclado; ←/→ troca de
+  cartão.
+- Modo guitarra: na tela de jogadores, linha "modo". Ele fica na conta: com
+  uma conta, trocar o modo ou remapear em "Controles" e conferir que volta
+  igual na próxima vez (o arquivo aparece em `conf/arkhero/contas/`).
+- Dois no teclado com as mesmas teclas: o segundo não fica pronto até mudar
+  em Controles.
+
+---
+
+## Etapa 7 (planejada): modo prática
+
+Pedido: um modo sem como perder, com a velocidade da música ajustável
+durante a partida e a escolha de trechos com loop e pontos A-B.
+
+- **Seções**: os charts já trazem as seções ("section Intro", "Solo 1"...):
+  no `.chart`, em `[Events]`; no `.mid`, na trilha EVENTS. O leitor passa a
+  guardá-las (nome e tempo).
+- **Tela da prática**: escolher a seção inicial (A) e a final (B), ou uma
+  só; a velocidade (50% a 100%, de 5 em 5); e, durante a partida, botões
+  para mudar a velocidade e marcar A e B na hora.
+- **Loop**: chegando em B, volta para A (o áudio volta para a posição de A,
+  e as notas de A a B voltam a ficar pendentes), com uma contagem curta.
+- **Velocidade**: o jeito simples é tocar o áudio mais devagar
+  (`SDL_SetAudioStreamFrequencyRatio`), o que também deixa o som mais grave,
+  como uma fita. Manter o tom exige esticar o áudio no tempo (WSOLA), feito
+  na hora, enquanto toca, e com o relógio do jogo acompanhando a posição de
+  verdade na música. Proposta: começar pelo simples e trocar pelo esticado
+  se o som grave incomodar.
+- **Sem perder**: hoje já não existe "perder" (não há barra de rock); o modo
+  prática também não grava recorde.
+
+---
+
 ## Próximos passos (análise de 2026-10-28)
 
 ### A guitarra (modo guitarra), para testar no PC
@@ -776,19 +1333,18 @@ O que falta, em ordem:
   jogo de semanas atrás.
 
 **Para a biblioteca da comunidade:**
-- outros instrumentos: o `PART BASS` já está nos MIDI do GH3 (baixo e
-  guitarra rítmica são quase de graça, com o leitor que já existe);
+- ~~outros instrumentos~~ (feito na etapa 5);
 - `.sng`; nomes com acento (fonte TrueType); capa do álbum (`album.jpg`
   pede um leitor de JPEG); prévia da música na lista.
 
 **Para a partida:**
-- estrelas por música; barra de rock (hoje não dá para perder); som de erro
-  e silenciar a guitarra quando erra; modo treino por seção (as seções do
+- estrelas por música; barra de rock (hoje não dá para perder); silenciar a
+  guitarra quando erra (o som de erro foi feito na etapa 5); modo treino por seção (as seções do
   `[Events]` já estão nos arquivos).
 
 **Distribuição:**
-- testar em outro firmware (ROCKNIX, EmuELEC: glibc 2.36, o mínimo do
-  container); build x86_64; o `port.json` e as imagens do PortMaster.
+- testar em outro firmware (ROCKNIX, EmuELEC, ArkOS clássico: ver a análise
+  da glibc na etapa 5); build x86_64; o `port.json` e as imagens do PortMaster.
 
 **O objetivo original: Lua** (temas, regras, modificadores, carreira:
 ver a etapa 4c).

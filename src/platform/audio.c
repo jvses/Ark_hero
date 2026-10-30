@@ -46,6 +46,15 @@ bool Audio_init(Audio *a)
             a->driver, disp.freq, disp.channels, a->frames_buffer,
             1000.0 * a->frames_buffer / (disp.freq > 0 ? disp.freq : AUDIO_TAXA));
 
+    /* Os efeitos (o som de erro) vão num segundo dispositivo LÓGICO: cada
+       SDL_OpenAudioDeviceStream abre um, e a SDL mistura todos no mesmo
+       dispositivo físico. (Ligar um segundo stream ao primeiro não dá: a SDL
+       não deixa mexer nas ligações de um dispositivo aberto assim.) Sem ele
+       o jogo segue, só sem o som de erro. */
+    a->efeito = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    if (a->efeito) SDL_ResumeAudioStreamDevice(a->efeito);
+    else           SDL_Log("[audio] sem stream de efeitos: %s (o jogo segue sem o som de erro)", SDL_GetError());
+
     /* o stream nasce pausado; ele toca silêncio enquanto não há música */
     SDL_ResumeAudioStreamDevice(a->stream);
     return true;
@@ -53,6 +62,8 @@ bool Audio_init(Audio *a)
 
 void Audio_quit(Audio *a)
 {
+    if (a->efeito) SDL_DestroyAudioStream(a->efeito);
+    a->efeito = NULL;
     if (a->stream) SDL_DestroyAudioStream(a->stream);   /* fecha o dispositivo junto */
     a->stream = NULL;
     a->pcm    = NULL;
@@ -109,6 +120,14 @@ void Audio_set_volume(Audio *a, float volume)
     if (!a->stream || volume == a->volume) return;
     a->volume = volume;
     SDL_SetAudioStreamGain(a->stream, volume);
+    if (a->efeito) SDL_SetAudioStreamGain(a->efeito, volume);
+}
+
+void Audio_effect(Audio *a, const Pcm *som)
+{
+    if (!a->efeito || !som->amostras) return;
+    SDL_ClearAudioStream(a->efeito);
+    SDL_PutAudioStreamData(a->efeito, som->amostras, (int)(som->frames * BYTES_POR_FRAME));
 }
 
 /* Mantém sempre ~200 ms na fila do stream. Primeiro o silêncio inicial, depois
@@ -196,6 +215,47 @@ bool Audio_make_clicks(Pcm *saida, const double *tempo, const bool *forte, int n
             saida->amostras[(inicio + k) * 2]     = v;
             saida->amostras[(inicio + k) * 2 + 1] = v;
         }
+    }
+    return true;
+}
+
+/* ---------------------------------------------------------------------------
+ * Som de erro: a "nota errada". Dois dentes de serra (todos os harmônicos:
+ * soa áspero, como corda) a um semitom de distância (a dissonância é que
+ * diz "errou"), caindo um pouco de altura, mais um chiado agudo no ataque (a
+ * palheta raspando). O conteúdo fica entre 200 Hz e alguns kHz, onde o ouvido
+ * e os alto-falantes pequenos (o do R36S) escutam por cima da música.
+ * ------------------------------------------------------------------------- */
+#define ERRO_SEGUNDOS 0.22f
+
+bool Audio_make_miss(Pcm *saida, float grave)
+{
+    saida->frames   = (Sint64)(ERRO_SEGUNDOS * AUDIO_TAXA);
+    saida->amostras = SDL_calloc((size_t)saida->frames * AUDIO_CANAIS, sizeof(Sint16));
+    if (!saida->amostras) { saida->frames = 0; return false; }
+
+    const float f0 = 196.0f * grave;   /* sol (G3) na guitarra; o baixo, uma oitava abaixo */
+    Uint32 semente = 12345;
+    float  fase1 = 0.0f, fase2 = 0.0f, anterior = 0.0f;
+    for (Sint64 k = 0; k < saida->frames; k++) {
+        const float t    = (float)k / AUDIO_TAXA;
+        const float env  = SDL_min(1.0f, t / 0.002f) * SDL_expf(-t * 14.0f);   /* ataque de 2 ms */
+        const float cai  = 1.0f - 0.25f * t / ERRO_SEGUNDOS;                    /* o tom cai um pouco */
+        fase1 += f0 * cai / AUDIO_TAXA;
+        fase2 += f0 * 1.06f * cai / AUDIO_TAXA;                                 /* um semitom acima */
+        fase1 -= SDL_floorf(fase1);
+        fase2 -= SDL_floorf(fase2);
+        const float serra = (2.0f * fase1 - 1.0f) + (2.0f * fase2 - 1.0f);
+
+        semente = semente * 1664525u + 1013904223u;                           /* ruído branco barato */
+        const float branco = (float)(semente >> 8) / 8388608.0f - 1.0f;       /* -1..1 */
+        const float agudo  = branco - anterior;                               /* passa-alta: só o chiado */
+        anterior = branco;
+
+        const float v = env * 0.40f * serra + 0.30f * agudo * SDL_expf(-t * 60.0f);
+        const Sint16 amostra = (Sint16)(32767.0f * SDL_clamp(v, -1.0f, 1.0f));
+        saida->amostras[k * 2]     = amostra;
+        saida->amostras[k * 2 + 1] = amostra;
     }
     return true;
 }

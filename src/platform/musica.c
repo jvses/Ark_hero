@@ -199,6 +199,7 @@ static int SDLCALL trabalha(void *dado)
 {
     Varredura *v = dado;
     const Uint64 inicio = SDL_GetTicksNS();
+    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_LOW);   /* procurar pastas não pode travar a tela */
     for (int i = 0; i < v->n_raizes; i++) varre(v, v->raizes[i], "", 0);
     v->segundos = (double)(SDL_GetTicksNS() - inicio) / 1e9;
     SDL_SetAtomicInt(&v->estado, VARRE_PRONTO);   /* por último: daqui em diante o main lê */

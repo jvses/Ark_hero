@@ -41,6 +41,9 @@ export XDG_CACHE_HOME="$CONFDIR"
 
 export LD_LIBRARY_PATH="$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
 export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
+# o banco de mapeamentos do PortMaster: reconhece mais controles externos
+# (os que ainda faltarem: conf/arkhero/gamecontrollerdb.txt, lido pelo jogo)
+[ -f "$controlfolder/gamecontrollerdb.txt" ] && export SDL_GAMECONTROLLERCONFIG_FILE="$controlfolder/gamecontrollerdb.txt"
 export ARKHERO_FULLSCREEN=1
 
 BINARY="$GAMEDIR/arkhero.${DEVICE_ARCH}"

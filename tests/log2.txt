@@ -1,0 +1,124 @@
+--- ambiente ---
+CFW        : dArkOS 09022026
+device     : RG351MP (aarch64)
+glibc CFW  : 241
+ldd (Debian GLIBC 2.41-12+deb13u3) 2.41
+binario    : /roms/ports/arkhero/arkhero.aarch64
+----------------
+===== Ark Hero =====
+SDL compilado : 3.4.16
+SDL runtime   : 3.4.16 (SDL-release-3.4.16-0-gfa2c02bb6)
+video disp.   : wayland x11 kmsdrm offscreen dummy evdev 
+video em uso  : kmsdrm
+render disp.  : opengl opengles2 vulkan gpu software 
+render em uso : opengles2
+[input] controles do jogador 1 carregados de /roms/ports/arkhero/conf/arkhero/controles.cfg
+[input] controles do jogador 1: verde=leftshoulder/A vermelho=lefttrigger/S amarelo=righttrigger/D azul=rightshoulder/F laranja=sul/G palheta_cima=dpup/Up palheta_baixo=dpdown/Down star_power=back/Space whammy=-/W pausa=start/Escape  analogico=Direito
+[W][12:12:36.760874] pw.conf      | [          conf.c: 1182 try_load_conf()] can't load config client.conf: No such file or directory
+[E][12:12:36.761231] pw.conf      | [          conf.c: 1215 pw_conf_load_conf_for_context()] can't load config client.conf: No such file or directory
+[W][12:12:36.775092] pw.conf      | [          conf.c: 1182 try_load_conf()] can't load config client.conf: No such file or directory
+[E][12:12:36.775309] pw.conf      | [          conf.c: 1215 pw_conf_load_conf_for_context()] can't load config client.conf: No such file or directory
+[audio] driver alsa, dispositivo 48000 Hz 2 canais, buffer 1024 frames (21.3 ms)
+[fonte] /roms/ports/arkhero/assets/fonts/terminal16unicode.ttf: 523 caracteres, atlas 384x272
+[idioma] 3 idioma(s) em /roms/ports/arkhero/assets/lang/
+[arkhero] versao 0.1 | executavel em /roms/ports/arkhero/ | dados em /roms/ports/arkhero/conf/arkhero/
+[arkhero] 4 nucleo(s), 895 MB de RAM, Linux
+[arkhero] opcoes carregadas de /roms/ports/arkhero/conf/arkhero/opcoes.cfg
+[arkhero] 1 recorde(s) em /roms/ports/arkhero/conf/arkhero/recordes.txt
+[musica] procurando em /roms/ports/arkhero/songs/
+[musica] procurando em /roms/ports/arkhero/assets/musics/
+[input] controle do jogador 1: GO-Super Gamepad (tipo standard)
+[input] mapeamento SDL: 1900bb3e4b4800000011000000010000,GO-Super Gamepad,a:b1,b:b0,back:b12,dpdown:b9,dpleft:b10,dpright:b11,dpup:b8,guide:b16,leftshoulder:b4,leftstick:b14,lefttrigger:b6,leftx:a0,lefty:a1,rightshoulder:b5,rightstick:b15,righttrigger:b7,rightx:a2,righty:a3,start:b13,x:b2,y:b3,platform:Linux,
+[input] jogador 1: botoes frontais Auto (Nintendo)
+[input] controle do jogador 2: Xbox 360 Controller (tipo xbox360)
+[input] mapeamento SDL: 030081b85e0400008e02000010010000,Xbox 360 Controller,a:b0,b:b1,x:b2,y:b3,back:b6,guide:b8,start:b7,leftstick:b9,rightstick:b10,leftshoulder:b4,rightshoulder:b5,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,leftx:a0,lefty:a1,rightx:a3,righty:a4,lefttrigger:a2,righttrigger:a5,platform:Linux,
+[input] jogador 2: botoes frontais Auto (Xbox)
+[musica] 78 musica(s) em 0.18 s (2 com .chart, 76 com .mid; 80 pastas olhadas; 0 com chart mas sem audio suportado)
+[video] fps 52.5  pior frame 633 ms
+[video] fps 59.9  pior frame 26 ms
+[video] fps 59.9  pior frame 17 ms
+[input] verde -> controle lefttrigger
+[video] fps 59.9  pior frame 17 ms
+[input] vermelho -> controle leftshoulder
+[input] amarelo -> controle rightshoulder
+[input] azul -> controle righttrigger
+[input] laranja -> controle sul
+[video] fps 59.9  pior frame 17 ms
+[input] jogador 2: whammy -> analogico Direito
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[musica] Eric Johnson - Cliffs Of Dover (with Drums) (Neversoft, 4EverfreeBrony): chart lido em 20.2 ms (resolucao 480, 504 mudancas de andamento, offset 0.000 s)
+[musica]   Guitarra: facil 381, medio 631, dificil 929, expert 1240
+[musica]   Baixo: facil 329, medio 481, dificil 633, expert 776
+[video] fps 59.7  pior frame 33 ms
+[video] fps 59.9  pior frame 17 ms
+[carga] Eric Johnson - Cliffs Of Dover (with Drums) (Neversoft, 4EverfreeBrony): 3 faixa(s)
+[video] fps 59.9  pior frame 17 ms
+[carga] 3 faixa(s) em 3 thread(s) (4 nucleo(s), 895 MB de RAM, soma em 32 bits), 255.0 s de audio em 5.62 s (136x o tempo real)
+[carga] pronta: 255.0 s de musica, 46.7 MB na memoria
+[partida] inicio: Cliffs Of Dover (with Drums) | 2 jogador(es) | janela +-100 ms | velocidade 7 | som: musica | preparacao 0.0 s
+[partida]   J1: Guitarra Difícil, 929 notas, controle: GO-Super Gamepad
+[partida]   J2: Guitarra Difícil, 929 notas, controle: Xbox 360 Controller
+[partida] penalidade sim | ajuste de tempo +0 ms | som de erro nao
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 19 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 24 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[video] fps 59.9  pior frame 17 ms
+[partida] NOVO RECORDE em Cliffs Of Dover (with Drums): 104758 pontos do jogador 2 (antes 0)
+[partida] terminou em 255.0 s | pausas 0 | frames lentos 0 | saltos do relogio 0 | som de erro desligado, 0 vez(es)
+[partida]   J1: 0 pontos, 0/929 notas (0%), maior combo 0, star power 0%, toques sem nota 0
+[partida]   J1: tempo dos acertos: erro medio +0.0 ms, desvio 0.0 ms
+[partida]   J2: 104758 pontos, 829/929 notas (89%), maior combo 109, star power 25%, toques sem nota 106
+[partida]   J2: tempo dos acertos: erro medio -40.4 ms, desvio 32.2 ms
+[partida]   J2: sugestao: Ajuste de tempo +40 ms
+[video] fps 59.9  pior frame 24 ms
+[video] fps 59.9  pior frame 17 ms
+/opt/system/Tools/PortMaster/funcs.txt: line 140:  2932 Killed                  $ESUDO pkill -9 -f gptokeyb
+/opt/system/Tools/PortMaster/funcs.txt: line 140:  2939 Killed                  $ESUDO pkill -9 -f gptokeyb2

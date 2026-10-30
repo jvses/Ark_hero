@@ -25,6 +25,8 @@ if [ -d "$ROOT/assets" ]; then
     cp -rL "$ROOT/assets" "$PORT/assets"
     # as musicas de teste nunca vao no pacote: tem direitos autorais
     rm -rf "$PORT/assets/musics"
+    # nem arquivos baixados que ja foram extraidos (o zip da fonte, por exemplo)
+    find "$PORT/assets" -name "*.zip" -delete
     echo "++ incluido assets/ ($(du -sh "$PORT/assets" | cut -f1))"
 fi
 
@@ -41,6 +43,9 @@ for par in "SDL3:LICENSE.txt" "libogg:COPYING" "libvorbis:COPYING" "opus:COPYING
 done
 cp "$ROOT/third_party/dr_libs/README.md" "$LIC/dr_mp3.txt"
 sed -n '/^This software is available as a choice/,$p' "$ROOT/third_party/dr_libs/dr_mp3.h" >> "$LIC/dr_mp3.txt"
+cp "$ROOT/third_party/stb/README.md" "$LIC/stb_truetype.txt"
+sed -n '/^This software is available under 2 licenses/,$p' "$ROOT/third_party/stb/stb_truetype.h" >> "$LIC/stb_truetype.txt"
+cp "$ROOT/assets/fonts/FONTE.txt" "$LIC/fonte_terminal16unicode.txt"
 echo "++ incluido licencas/ ($(ls "$LIC" | wc -l) arquivos)"
 
 # 1d) a pasta das musicas, com um aviso (o jogo e distribuido sem musicas)

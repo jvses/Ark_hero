@@ -153,6 +153,17 @@ static int le(Fonte *f, float *buf)
  * 7 faixas. A soma é em 32 bits (a ordem entre as threads varia, e assim o
  * resultado é sempre o mesmo, sem cortar no meio); no fim, um corte só para
  * 16 bits.
+ *
+ * Aparelhos menores:
+ *  - 1 ou 2 núcleos: uma thread por núcleo, então com 1 núcleo a carga é em
+ *    série (como era antes do paralelo) e nada quebra; só demora mais. O risco
+ *    é a decodificação, que ocupa o processador inteiro, roubar tempo da
+ *    thread principal (a tela) e da do som. Por isso as threads da carga
+ *    rodam com prioridade baixa: o sistema dá a vez para as outras primeiro.
+ *  - pouca RAM: a soma em 32 bits ocupa o dobro da música pronta (uns 110 MB
+ *    numa música de 5 minutos). Se ela passar de 1/4 da RAM, a soma é feita
+ *    direto em 16 bits ("modo econômico"), cortando a cada faixa somada. Pode
+ *    distorcer um pouco onde a mistura estoura, o que já é raro.
  * ------------------------------------------------------------------------- */
 typedef struct {
     Carregador   *c;
@@ -161,7 +172,8 @@ typedef struct {
     SDL_AtomicInt proxima;       /* próxima faixa sem dono */
     SDL_AtomicInt feitos;        /* frames de saída prontos, somando todas as faixas */
     Sint64        soma;          /* quantos frames ao todo (para o progresso) */
-    Sint32       *mix;
+    Sint32       *mix;           /* a soma em 32 bits... */
+    Sint16       *mix16;         /* ...ou direto em 16, no modo econômico */
     Sint64        total;
     SDL_Mutex    *trava;         /* protege o mix e o fim */
     Sint64        fim;           /* a faixa mais longa decodificada */
@@ -187,8 +199,16 @@ static void decodifica(Trabalho *t, Fonte *f, float *ler, Sint16 *conv)
             if (n <= 0) break;
             /* somar é rápido perto de decodificar: uma trava só basta */
             SDL_LockMutex(t->trava);
-            Sint32 *d = t->mix + pos * AUDIO_CANAIS;
-            for (Sint64 k = 0; k < n * AUDIO_CANAIS; k++) d[k] += conv[k];
+            if (t->mix) {
+                Sint32 *d = t->mix + pos * AUDIO_CANAIS;
+                for (Sint64 k = 0; k < n * AUDIO_CANAIS; k++) d[k] += conv[k];
+            } else {
+                Sint16 *d = t->mix16 + pos * AUDIO_CANAIS;
+                for (Sint64 k = 0; k < n * AUDIO_CANAIS; k++) {
+                    const Sint32 v = (Sint32)d[k] + conv[k];
+                    d[k] = (Sint16)(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
+                }
+            }
             SDL_UnlockMutex(t->trava);
             pos += n;
             const int feitos = SDL_AddAtomicInt(&t->feitos, (int)n) + (int)n;
@@ -205,6 +225,7 @@ static void decodifica(Trabalho *t, Fonte *f, float *ler, Sint16 *conv)
 static int SDLCALL operario(void *dado)
 {
     Trabalho *t = dado;
+    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_LOW);   /* a tela e o som primeiro */
     float  *ler  = SDL_malloc(LEITURA * 2 * sizeof(float));
     Sint16 *conv = SDL_malloc(SAIDA_MAX * AUDIO_CANAIS * sizeof(Sint16));
     if (!ler || !conv) {
@@ -222,10 +243,11 @@ static int SDLCALL operario(void *dado)
 }
 
 /* quantas threads: uma por núcleo, sem passar do número de faixas
-   (ARKHERO_THREADS força um número, para medir) */
+   (ARKHERO_THREADS força um número, para medir). Com 1 núcleo, só a própria
+   thread da carga trabalha. */
 static int quantas_threads(int faixas)
 {
-    int n = SDL_GetNumLogicalCPUCores();
+    int n = SDL_GetNumLogicalCPUCores();   /* nunca menos que 1, mesmo se o sistema não souber */
     const char *forcado = SDL_getenv("ARKHERO_THREADS");
     if (forcado && *forcado) n = SDL_atoi(forcado);
     if (n > faixas) n = faixas;
@@ -243,10 +265,22 @@ static void falha(Carregador *c, const char *fmt, const char *detalhe)
     SDL_SetAtomicInt(&c->estado, CARGA_ERRO);
 }
 
+/* a soma em 32 bits caberia folgada na RAM? (ARKHERO_ECONOMICO=1 força o
+   modo econômico, para testar no PC) */
+static bool soma_em_16_bits(Sint64 frames)
+{
+    const char *forcado = SDL_getenv("ARKHERO_ECONOMICO");
+    if (forcado && SDL_strcmp(forcado, "1") == 0) return true;
+    const Sint64 bytes = frames * AUDIO_CANAIS * (Sint64)sizeof(Sint32);
+    const Sint64 ram   = (Sint64)SDL_GetSystemRAM() * 1024 * 1024;   /* 0 = não sabe: confia */
+    return ram > 0 && bytes > ram / 4;
+}
+
 static int SDLCALL trabalha(void *dado)
 {
     Carregador *c = dado;
     const Uint64 inicio = SDL_GetTicksNS();
+    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_LOW);
 
     /* 1. abre todas as faixas para saber o tamanho final */
     Fonte  fontes[CARREGADOR_MAX_FAIXAS];
@@ -264,7 +298,7 @@ static int SDLCALL trabalha(void *dado)
     }
     if (abertas == 0) { falha(c, "nenhuma faixa de audio abriu (%s)", c->n ? c->arquivos[0] : "-"); return 0; }
 
-    /* 2. decodifica em paralelo, somando em 32 bits */
+    /* 2. decodifica em paralelo, somando em 32 bits (ou em 16, com pouca RAM) */
     Trabalho t;
     SDL_zero(t);
     t.c      = c;
@@ -272,10 +306,13 @@ static int SDLCALL trabalha(void *dado)
     t.n      = abertas;
     t.soma   = soma;
     t.total  = maior + MARGEM;
-    t.mix    = SDL_calloc((size_t)t.total * AUDIO_CANAIS, sizeof(Sint32));
+    const bool economico = soma_em_16_bits(t.total);
+    if (economico) t.mix16 = SDL_calloc((size_t)t.total * AUDIO_CANAIS, sizeof(Sint16));
+    else           t.mix   = SDL_calloc((size_t)t.total * AUDIO_CANAIS, sizeof(Sint32));
     t.trava  = SDL_CreateMutex();
-    if (!t.mix || !t.trava) {
+    if ((!t.mix && !t.mix16) || !t.trava) {
         SDL_free(t.mix);
+        SDL_free(t.mix16);
         SDL_DestroyMutex(t.trava);
         for (int i = 0; i < abertas; i++) fecha(&fontes[i]);
         falha(c, "sem memoria para %s", "a musica");
@@ -296,14 +333,15 @@ static int SDLCALL trabalha(void *dado)
 
     if (SDL_GetAtomicInt(&c->cancelar) || SDL_GetAtomicInt(&t.sem_memoria)) {
         SDL_free(t.mix);
+        SDL_free(t.mix16);
         falha(c, "%s", SDL_GetAtomicInt(&c->cancelar) ? "carga cancelada" : "sem memoria na carga");
         return 0;
     }
 
     /* 3. de 32 para 16 bits, no mesmo buffer: a amostra i (16 bits) é gravada
        antes do ponto em que as próximas (32 bits) ainda vão ser lidas */
-    Sint16 *saida = (Sint16 *)t.mix;
-    for (Sint64 i = 0; i < t.fim * AUDIO_CANAIS; i++) {
+    Sint16 *saida = economico ? t.mix16 : (Sint16 *)t.mix;
+    for (Sint64 i = 0; !economico && i < t.fim * AUDIO_CANAIS; i++) {
         const Sint32 v = t.mix[i];
         saida[i] = (Sint16)(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
     }
@@ -313,8 +351,9 @@ static int SDLCALL trabalha(void *dado)
     c->pcm.frames     = t.fim;
     c->segundos       = (double)(SDL_GetTicksNS() - inicio) / 1e9;
     c->segundos_audio = (double)soma / AUDIO_TAXA;
-    SDL_Log("[carga] %d faixa(s) em %d thread(s), %.1f s de audio em %.2f s (%.0fx o tempo real)", abertas,
-            criadas + 1, (double)t.fim / AUDIO_TAXA, c->segundos,
+    SDL_Log("[carga] %d faixa(s) em %d thread(s) (%d nucleo(s), %d MB de RAM, soma em %d bits), "
+            "%.1f s de audio em %.2f s (%.0fx o tempo real)", abertas, criadas + 1, SDL_GetNumLogicalCPUCores(),
+            SDL_GetSystemRAM(), economico ? 16 : 32, (double)t.fim / AUDIO_TAXA, c->segundos,
             c->segundos > 0 ? (double)soma / AUDIO_TAXA / c->segundos : 0.0);
     SDL_SetAtomicInt(&c->progresso, 1000);
     SDL_SetAtomicInt(&c->estado, CARGA_PRONTO);   /* por último: a partir daqui o main lê os campos */

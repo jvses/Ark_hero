@@ -19,6 +19,12 @@ const SDL_Color COR_PAINEL       = {  18,   8,  36, 210 };
 const SDL_Color COR_TEXTO        = { 245, 240, 255, 255 };
 const SDL_Color COR_TEXTO_FRACO  = { 150, 135, 175, 255 };
 const SDL_Color COR_TEXTO_ESCURO = {  25,  10,  35, 255 };
+const SDL_Color COR_JOGADOR[4]   = {
+    { 255,  70, 190, 255 },   /* J1: o rosa de sempre */
+    { 255, 150,  40, 255 },   /* J2: laranja */
+    { 120, 230,  90, 255 },   /* J3: verde-limão */
+    { 110, 150, 255, 255 },   /* J4: azul */
+};
 
 SDL_Color cor_alfa(SDL_Color c, float alfa)
 {
@@ -152,39 +158,4 @@ void ret_degrade(SDL_Renderer *ren, SDL_FRect r, SDL_Color topo, SDL_Color base)
     };
     const int idx[6] = { 0, 1, 2, 2, 1, 3 };
     SDL_RenderGeometry(ren, NULL, v, 4, idx, 6);
-}
-
-/* ---------------------------------------------------------------------------
- * Texto
- *
- * SDL_RenderDebugText desenha 8x8 px por caractere. Para aumentar, a escala do
- * renderer multiplica TUDO, inclusive as coordenadas: por isso x e y são
- * divididos pela escala antes, e a escala volta a 1 logo depois.
- * ------------------------------------------------------------------------- */
-float texto_largura(const char *s, float escala)
-{
-    return (float)SDL_utf8strlen(s) * TEXTO_PX * escala;   /* caracteres, não bytes */
-}
-
-void texto(SDL_Renderer *ren, float x, float y, float escala, SDL_Color cor, const char *s)
-{
-    SDL_SetRenderDrawColor(ren, cor.r, cor.g, cor.b, cor.a);
-    if (escala == 1.0f) {
-        SDL_RenderDebugText(ren, x, y, s);
-        return;
-    }
-    SDL_SetRenderScale(ren, escala, escala);
-    SDL_RenderDebugText(ren, x / escala, y / escala, s);
-    SDL_SetRenderScale(ren, 1.0f, 1.0f);
-}
-
-void texto_centro(SDL_Renderer *ren, float cx, float y, float escala, SDL_Color cor, const char *s)
-{
-    texto(ren, cx - texto_largura(s, escala) / 2.0f, y, escala, cor, s);
-}
-
-void texto_sombra(SDL_Renderer *ren, float x, float y, float escala, SDL_Color cor, const char *s)
-{
-    texto(ren, x + escala, y + escala, escala, cor_alfa((SDL_Color){ 0, 0, 0, 255 }, cor.a / 255.0f * 0.8f), s);
-    texto(ren, x, y, escala, cor, s);
 }

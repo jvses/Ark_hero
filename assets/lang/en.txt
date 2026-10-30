@@ -1,0 +1,195 @@
+# Ark Hero - English
+# Left side: the original text (Portuguese). Right side: the translation.
+# Keep every %d, %s... in the same order. See COMO_TRADUZIR.md.
+
+idioma = English
+
+# menus
+Jogar = Play
+Configurações = Settings
+Sair = Quit
+Controles = Controls
+Velocidade da pista = Highway speed
+Modo precisão = Precision mode
+Penalidade (erro) = Overstrum penalty
+Mostrar acertos = Show hit timing
+Ajuste de tempo = Audio offset
+Modo canhoto = Lefty mode
+Mostrar FPS = Show FPS
+Volume = Volume
+Som de erro = Miss sound
+Idioma = Language
+Teste de áudio = Audio test
+Voltar = Back
+Jogador = Player
+Verde = Green
+Vermelho = Red
+Amarelo = Yellow
+Azul = Blue
+Laranja = Orange
+Palheta cima = Strum up
+Palheta baixo = Strum down
+Star power = Star power
+Whammy = Whammy
+Pausa = Pause
+Analógico = Analog stick
+Botões frontais = Face buttons
+Restaurar padrão = Restore defaults
+Carregar a música de teste = Load the test song
+Tocar / pausar = Play / pause
+Continuar = Resume
+Reiniciar = Restart
+Sair para o menu = Quit to menu
+Jogar de novo = Play again
+Fim da música = Song complete
+Músicas = Songs
+Organizar por = Sort by
+Pastas = Folders
+Título = Title
+Artista = Artist
+Demonstração = Demo
+Demonstração (sem música) = Demo (no song)
+Procurar músicas novas = Scan for new songs
+Voltar (pasta de cima) = Back (parent folder)
+Sim = Yes
+Não = No
+Controle = Controller
+
+# controller names
+Sul = South
+Leste = East
+Oeste = West
+Norte = North
+Esquerdo = Left
+Direito = Right
+Analóg. E = L stick
+Analóg. D = R stick
+
+# instruments and difficulties
+Guitarra = Guitar
+Baixo = Bass
+Rítmica = Rhythm
+Guitarra coop = Co-op guitar
+Teclado = Keys
+Fácil = Easy
+Médio = Medium
+Difícil = Hard
+Expert = Expert
+
+# warnings
+Em breve = Coming soon
+em breve = soon
+Não consegui ler o chart = Could not read the chart
+Essa parte do chart está vazia = That part of the chart is empty
+Sem áudio: tocando com o metrônomo = No audio: playing with the metronome
+Procurando músicas... = Scanning for songs...
+Controles restaurados = Controls restored
+
+# song list
+um jogo de ritmo para o R36S = a rhythm game for the R36S
+Notas de exemplo com metrônomo, para testar = Sample notes with a metronome, to try out
+recorde: %ld (%s %s, %d%%%s) = best: %ld (%s %s, %d%%%s)
+chart: %s = chart: %s
+Pasta: entre para ver as músicas dela = Folder: open it to see its songs
+←/→: por pasta, título (A-Z) ou artista = ←/→: by folder, title (A-Z) or artist
+Procura de novo em songs/ e no pastas.txt = Scans songs/ and pastas.txt again
+procurando músicas... %d encontrada(s) = scanning... %d song(s) found
+nenhuma música em songs/ = no songs in songs/
+pasta: %s = folder: %s
+%d música(s) = %d song(s)
+
+# loading and getting ready
+Carregando = Loading
+decodificando o áudio: %.0f%% = decoding audio: %.0f%%
+JOGADOR %d = PLAYER %d
+teclado = keyboard
+sem controle = no controller
+[%s] entra = [%s] join
+fora desta música = sitting this one out
+conecte um controle = connect a controller
+instrumento = instrument
+dificuldade = difficulty
+1 nota = 1 note
+%d notas = %d notes
+PRONTO! = READY!
+espera o teclado = waiting for keyboard
+
+# controls
+CONTROLE = CONTROLLER
+TECLADO = KEYBOARD
+sem controle: só o teclado = no controller: keyboard only
+último botão apertado: %s = last button pressed: %s
+Jogador %d: aperte o novo botão ou tecla para = Player %d: press the new button or key for
+mexa o analógico que vai ser o whammy = move the stick that will be the whammy
+(ou aperte um botão) = (or press a button)
+Esc cancela; sem resposta, cancela sozinho = Esc cancels; no answer cancels by itself
+
+# audio test
+Sem dispositivo de áudio: o jogo segue mudo. = No audio device: the game runs silent.
+Saída: %s, buffer de %d frames (%.0f ms) = Output: %s, %d-frame buffer (%.0f ms)
+Nenhuma música em %s = No songs in %s
+(notes.chart + song.ini + áudio) = (notes.chart + song.ini + audio)
+(%d faixa(s) com formato não suportado) = (%d track(s) in an unsupported format)
+Decodificando... = Decoding...
+Carregada: %.1f s de música em %.2f s (%.0fx) = Loaded: %.1f s of music in %.2f s (%.0fx)
+Erro: %s = Error: %s
+Pausado %s / %s = Paused %s / %s
+Tocando %s / %s = Playing %s / %s
+relógio cru %s  suave-cru: %+.1f ms = raw clock %s  smooth-raw: %+.1f ms
+
+# footer hints
+[%s] escolher  [%s] voltar  [←/→] página = [%s] select  [%s] back  [←/→] page
+[%s] pausa  [%s] star power = [%s] pause  [%s] star power
+[%s] ok  [%s] volta = [%s] ok  [%s] back
+[↑/↓] muda  [%s] confirma  [%s] desfaz = [↑/↓] change  [%s] keep  [%s] undo
+[↑/↓] linha  [%s] ok  [%s] volta = [↑/↓] row  [%s] ok  [%s] back
+[←/→] cartão  [↑/↓] linha  [%s] ok  [%s] volta = [←/→] card  [↑/↓] row  [%s] ok  [%s] back
+J%d: [%s] de novo começa sem os outros = P%d: [%s] again starts without the rest
+
+# during the song
+STAR = STAR
+STAR POWER! = STAR POWER!
+ERROU = MISS
+PERFEITO = PERFECT
+BOM = GOOD
+PONTOS = SCORE
+COMBO = STREAK
+
+# results
+%ld pontos = %ld points
+Notas: %d / %d  (%d%%) = Notes: %d / %d  (%d%%)
+Maior combo: %d = Best streak: %d
+%d ms adiantado: tente Ajuste de tempo %+d = %d ms early: try Audio offset %+d
+%d ms atrasado: tente Ajuste de tempo %+d = %d ms late: try Audio offset %+d
+acertos no tempo certo (%+d ms em média) = hits on time (%+d ms on average)
+NOVO RECORDE!  FULL COMBO!  (antes: %ld) = NEW HIGH SCORE!  FULL COMBO!  (was: %ld)
+NOVO RECORDE!  (antes: %ld) = NEW HIGH SCORE!  (was: %ld)
+RECORDE! = HIGH SCORE!
+FULL COMBO! = FULL COMBO!
+notas %d%% = notes %d%%
+combo %d = streak %d
+
+# players and accounts
+Jogadores = Players
+conta = account
+modo = mode
+Convidado = Guest
++ novo jogador = + new player
+Nome do jogador %d = Name for player %d
+[%s] escreve  [%s] apaga = [%s] types  [%s] erases
+espaço = space
+apagar = erase
+Esse nome já está jogando = That name is already playing
+Contas demais = Too many accounts
+todos prontos: escolha a música... = all ready: pick the song...
+recorde: %ld de %s (%s %s, %d%%%s) = best: %ld by %s (%s %s, %d%%%s)
+Um controle desconectou: a partida pausou = A controller disconnected: game paused
+Pronto = Ready
+Escrever o nome = Type the name
+[%s] joga no teclado = [%s] play on keyboard
+modo guitarra = guitar mode
+modo controle = controller mode
+sem teclas = no keys
+teclas repetidas = keys in use
+Ajuste as teclas em Controles = Set up the keys in Controls
+[↑/↓] tecla  [%s] escreve  [%s] apaga = [↑/↓] key  [%s] types  [%s] erases

@@ -19,9 +19,13 @@ int Opcoes_write(const Opcoes *o, char *buf, size_t n)
                     "organizar = %d\n"
                     "penalidade = %d\n"
                     "mostrar_acertos = %d\n"
-                    "ajuste_ms = %d\n",
+                    "ajuste_ms = %d\n"
+                    "som_erro = %d\n"
+                    "idioma = %s\n"
+                    "conta1 = %s\nconta2 = %s\nconta3 = %s\nconta4 = %s\n",
                     o->velocidade, o->precisao, o->canhoto, o->mostrar_fps, o->volume, o->organizar,
-                    o->penalidade, o->mostrar_julgamento, o->ajuste_ms);
+                    o->penalidade, o->mostrar_julgamento, o->ajuste_ms, o->som_erro,
+                    o->idioma[0] ? o->idioma : "pt", o->conta[0], o->conta[1], o->conta[2], o->conta[3]);
 }
 
 static int limita(int v, int min, int max)
@@ -41,9 +45,20 @@ void Opcoes_read(Opcoes *o, const char *texto, size_t tamanho)
         linha[t] = '\0';
         p = eol + 1;
 
-        char chave[32];
+        char chave[32], codigo[16];
         int  v;
-        if (linha[0] == '#' || sscanf(linha, " %31[a-z_] = %d", chave, &v) != 2) continue;   /* %d aceita o sinal */
+        if (linha[0] == '#') continue;
+        if (sscanf(linha, " idioma = %15[A-Za-z_-]", codigo) == 1) {   /* a única opção em texto */
+            snprintf(o->idioma, sizeof(o->idioma), "%s", codigo);
+            continue;
+        }
+        int k;
+        char nome[24];
+        if (sscanf(linha, " conta%d = %23[^\r\n]", &k, nome) == 2 && k >= 1 && k <= 4) {   /* a última conta do jogador k */
+            snprintf(o->conta[k - 1], sizeof(o->conta[k - 1]), "%s", nome);
+            continue;
+        }
+        if (sscanf(linha, " %31[a-z_] = %d", chave, &v) != 2) continue;   /* %d aceita o sinal */
 
         if      (strcmp(chave, "velocidade") == 0)  o->velocidade  = limita(v, GAME_VELOCIDADE_MIN, GAME_VELOCIDADE_MAX);
         else if (strcmp(chave, "precisao") == 0)    o->precisao    = v != 0;
@@ -54,5 +69,6 @@ void Opcoes_read(Opcoes *o, const char *texto, size_t tamanho)
         else if (strcmp(chave, "penalidade") == 0)  o->penalidade  = v != 0;
         else if (strcmp(chave, "mostrar_acertos") == 0) o->mostrar_julgamento = v != 0;
         else if (strcmp(chave, "ajuste_ms") == 0)   o->ajuste_ms   = limita(v, -GAME_AJUSTE_MAX, GAME_AJUSTE_MAX);
+        else if (strcmp(chave, "som_erro") == 0)    o->som_erro    = v != 0;
     }
 }
