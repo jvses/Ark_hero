@@ -194,3 +194,22 @@ sem teclas = no keys
 teclas repetidas = keys in use
 Ajuste as teclas em Controles = Set up the keys in Controls
 [↑/↓] tecla  [%s] escreve  [%s] apaga = [↑/↓] key  [%s] types  [%s] erases
+
+# modo prática
+Prática = Practice
+Começo (A) = Start (A)
+Fim (B) = End (B)
+Velocidade da música = Song speed
+Começar = Start practice
+Marcar o começo aqui = Mark the start here
+Marcar o fim aqui = Mark the end here
+Escolher o trecho = Choose the section
+Recomeçar o trecho = Restart the section
+Compasso %d = Measure %d
+Começo do trecho marcado = Section start marked
+O fim precisa vir depois do começo = The end must come after the start
+Trecho marcado: repetindo = Section marked: looping
+%s a %s: %d nota(s) de %s %s = %s to %s: %d note(s) of %s %s
+a velocidade menor deixa o som mais grave = a slower speed also lowers the pitch
+PRÁTICA %d%%  %s → %s  volta %d (última: %d%%) = PRACTICE %d%%  %s → %s  loop %d (last: %d%%)
+PRÁTICA %d%%  %s → %s  volta %d = PRACTICE %d%%  %s → %s  loop %d

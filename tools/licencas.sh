@@ -29,4 +29,5 @@ sed -n '/^This software is available as a choice/,$p' "$ROOT/third_party/dr_libs
 cp "$ROOT/third_party/stb/README.md" "$LIC/LICENSE.stb_truetype.txt"
 sed -n '/^This software is available under 2 licenses/,$p' "$ROOT/third_party/stb/stb_truetype.h" >> "$LIC/LICENSE.stb_truetype.txt"
 cp "$ROOT/assets/fonts/FONTE.txt" "$LIC/LICENSE.terminal16unicode.txt"
+cp "$ROOT/assets/images/CREDITOS.txt" "$LIC/LICENSE.images.txt"
 echo "++ licencas: $(ls "$LIC" | wc -l) arquivos"

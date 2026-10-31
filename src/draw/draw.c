@@ -20,6 +20,7 @@ static const int IMAGEM_DA_TELA[TELA_N] = {
     [TELA_CONFIG]    = IMAGEM_CONFIG,
     [TELA_CONTROLES] = IMAGEM_CONFIG,
     [TELA_AUDIO]     = IMAGEM_CONFIG,
+    [TELA_PRATICA]   = IMAGEM_INICIO,
     [TELA_JOGO]      = IMAGEM_JOGO,
 };
 
@@ -140,9 +141,10 @@ static void titulo(SDL_Renderer *ren, const Game *g, const Menu *m)
         texto_centro(ren, LARG / 2, 100, 1, COR_CIANO, T("um jogo de ritmo para o R36S"));
     } else {
         float y = 34;
-        if (g->tela == TELA_CONTROLES)  y = 24;
-        else if (g->tela == TELA_JOGO)  y = g->terminou ? 34 : 116;
-        const char *t = T(m->titulo);
+        if (g->tela == TELA_CONTROLES || g->tela == TELA_PRATICA) y = 24;
+        else if (g->tela == TELA_JOGO)  y = g->terminou ? 34 : (Game_praticando(g) ? 92 : 116);
+        /* na prática, a lista de músicas avisa que é a prática */
+        const char *t = T(g->tela == TELA_MUSICAS && g->pratica.ligada ? "Prática" : m->titulo);
         texto_sombra(ren, LARG / 2 - texto_largura(t, 2) / 2, y, 2, COR_TEXTO, t);
     }
 }
@@ -204,7 +206,8 @@ static void menu_lista(SDL_Renderer *ren, const Game *g, const Menu *m, int sel)
     float y0 = 110;
     if (g->tela == TELA_INICIO)       y0 = 140;
     else if (g->tela == TELA_MUSICAS) y0 = 94;
-    else if (g->tela == TELA_JOGO)    y0 = g->terminou ? (Game_n_jogando(g) > 1 ? 308 : 262) : 170;
+    else if (g->tela == TELA_PRATICA) y0 = 126;
+    else if (g->tela == TELA_JOGO)    y0 = g->terminou ? (Game_n_jogando(g) > 1 ? 308 : 262) : (Game_praticando(g) ? 140 : 170);
     const SDL_FRect painel = { (LARG - painel_w) / 2, y0, painel_w, painel_h };
 
     ret_arredondado(ren, painel, 14, COR_PAINEL);
@@ -213,7 +216,7 @@ static void menu_lista(SDL_Renderer *ren, const Game *g, const Menu *m, int sel)
     for (int k = 0; k < vis; k++) {
         const int i = primeiro + k;
         const SDL_FRect r = { painel.x + 12, painel.y + 12 + k * (lin_h + lin_esp), painel.w - 24, lin_h };
-        char valor[32];
+        char valor[48];   /* o nome de uma seção da música pode ser comprido */
         Menu_valor(g, m->itens[i].id, valor, sizeof(valor));
         linha(ren, g, r, &m->itens[i], i == sel, valor, 0, NULL, 0);
     }
@@ -310,6 +313,27 @@ static void subtitulo_musica(SDL_Renderer *ren, const Game *g, float y)
         texto_corta(c, sizeof(c), mu->artista, LARG - 32, 1);
         texto_centro(ren, LARG / 2, y + TEXTO_H * e + 2, 1, COR_TEXTO_FRACO, c);
     }
+}
+
+/* Tela da prática: a música em cima, o menu (A, B, velocidade) e, embaixo,
+   quanto tempo e quantas notas o trecho tem. */
+static void tela_pratica(SDL_Renderer *ren, const Game *g)
+{
+    subtitulo_musica(ren, g, 62);
+
+    const int k = Game_leader(g) >= 0 ? Game_leader(g) : 0;
+    const Chart *c = &g->jog[k].chart;
+    int notas = 0;
+    for (int i = 0; i < c->n; i++) notas += c->notas[i].t >= g->pratica.ta && c->notas[i].t < g->pratica.tb;
+
+    char de[16], ate[16], s[96], cabe[96];
+    hora(de, sizeof(de), g->pratica.ta);
+    hora(ate, sizeof(ate), g->pratica.tb);
+    SDL_snprintf(s, sizeof(s), T("%s a %s: %d nota(s) de %s %s"), de, ate, notas,
+                 T(Instrumento_nome(g->jog[k].instrumento)), T(Dificuldade_nome(g->jog[k].dificuldade)));
+    texto_corta(cabe, sizeof(cabe), s, LARG - 32, 1);
+    texto_centro(ren, LARG / 2, 372, 1, COR_TEXTO_FRACO, cabe);
+    texto_centro(ren, LARG / 2, 396, 1, COR_TEXTO_FRACO, T("a velocidade menor deixa o som mais grave"));
 }
 
 /* carregando: o título e a barra de progresso da decodificação */
@@ -982,9 +1006,46 @@ static void hud_varios(SDL_Renderer *ren, const Game *g, const Jogador *j, int k
     ret(ren, (SDL_FRect){ r.x + r.w * GAME_SP_MINIMO - 1, r.y - 2, 2, r.h + 4 }, COR_TEXTO);
 }
 
+/* Prática: a velocidade, o trecho e a volta, numa linha. Com um jogador,
+   embaixo do relógio, com a porcentagem da última volta; com vários, no
+   alto, no meio. */
+static void linha_pratica(SDL_Renderer *ren, const Game *g, const Jogador *um)
+{
+    if (!Game_praticando(g)) return;
+    char a[48], b[48], s[160], c[160];
+    Menu_valor(g, ID_TRECHO_A, a, sizeof(a));
+    Menu_valor(g, ID_TRECHO_B, b, sizeof(b));
+    if (um && um->volta_pct >= 0)
+        SDL_snprintf(s, sizeof(s), T("PRÁTICA %d%%  %s → %s  volta %d (última: %d%%)"), g->pratica.ritmo, a, b,
+                     g->pratica.voltas + 1, um->volta_pct);
+    else
+        SDL_snprintf(s, sizeof(s), T("PRÁTICA %d%%  %s → %s  volta %d"), g->pratica.ritmo, a, b, g->pratica.voltas + 1);
+    if (um) {
+        texto_corta(c, sizeof(c), s, LARG - 20, 1);
+        texto_sombra(ren, 10, 42, 1, COR_CIANO, c);
+    } else {
+        texto_corta(c, sizeof(c), s, LARG - 20, 1);
+        texto_centro(ren, LARG / 2, 4, 1, COR_CIANO, c);
+    }
+}
+
+/* Voltando da pausa (ou entrando no trecho da prática): quantos segundos
+   faltam para o jogo seguir de onde estava, contados no relógio. */
+static void contagem(SDL_Renderer *ren, const Game *g)
+{
+    if (g->pausado || g->t >= g->livre_ate) return;
+    const double falta = (g->livre_ate - g->t) / Game_ritmo(g);
+    char s[8];
+    SDL_snprintf(s, sizeof(s), "%d", (int)SDL_ceil(falta));
+    const float a = 0.5f + 0.5f * (float)(falta - SDL_floor(falta));   /* cada número começa forte e apaga */
+    texto_sombra(ren, LARG / 2 - texto_largura(s, 3) / 2, 150, 3, cor_alfa(COR_TEXTO, a), s);
+}
+
 static void hud_jogo(SDL_Renderer *ren, const Game *g)
 {
     const int n = Game_n_jogando(g);
+    linha_pratica(ren, g, n <= 1 ? jogador_unico(g) : NULL);
+    contagem(ren, g);
     if (n <= 1) {
         hud_um(ren, g, jogador_unico(g));
         return;
@@ -1136,6 +1197,7 @@ void Draw_frame(const Draw *d, SDL_Renderer *ren, const Game *g, const Hud *h)
     } else if (g->tela == TELA_CARREGANDO) {
         tela_carregando(ren, g, h);
     }
+    if (g->tela == TELA_PRATICA) tela_pratica(ren, g);
 
     rodape(ren, g, h);
     aviso(ren, g);

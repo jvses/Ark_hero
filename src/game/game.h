@@ -23,6 +23,7 @@ typedef enum {
     TELA_CONFIG,      /* configurações */
     TELA_CONTROLES,   /* remapear botões */
     TELA_AUDIO,       /* teste de áudio: carregar e tocar a música de teste */
+    TELA_PRATICA,     /* modo prática: o trecho (A e B) e a velocidade */
     TELA_JOGO,        /* a pista */
     TELA_N
 } Tela;
@@ -41,7 +42,7 @@ typedef enum {
 } TipoItem;
 
 typedef enum {
-    ID_JOGAR, ID_CONFIG, ID_SAIR,
+    ID_JOGAR, ID_PRATICA, ID_CONFIG, ID_SAIR,
     ID_CONTROLES, ID_VELOCIDADE, ID_PRECISAO, ID_PENALIDADE, ID_JULGAMENTO, ID_AJUSTE,
     ID_CANHOTO, ID_FPS, ID_VOLUME, ID_SOM_ERRO, ID_IDIOMA,
     ID_JOGADOR,      /* tela de controles: de qual jogador é a configuração */
@@ -51,6 +52,8 @@ typedef enum {
     ID_AUDIO_TESTE, ID_AUDIO_CARREGAR, ID_AUDIO_TOCAR,
     ID_CONTINUAR, ID_REINICIAR, ID_SAIR_MENU,
     ID_DEMO,         /* a música de demonstração, sem áudio */
+    ID_TRECHO_A, ID_TRECHO_B, ID_RITMO, ID_COMECAR,   /* tela da prática */
+    ID_MARCA_A, ID_MARCA_B, ID_ESCOLHER_TRECHO,       /* pausa da prática */
 
     /* Faixas de ids, todas acima dos ids fixos. O executa() decide pelo
        intervalo, do maior para o menor; a das músicas é a última porque não
@@ -100,6 +103,25 @@ typedef struct {
     char idioma[16];    /* código do arquivo assets/lang/<codigo>.txt; "pt" = o embutido */
     char conta[4][24];  /* a última conta de cada jogador ("" = convidado) */
 } Opcoes;
+
+/* ---------------------------------------------------------------------------
+ * Modo prática: um trecho da música (de A até B) em loop, na velocidade
+ * escolhida, sem recorde. Os trechos são as seções do chart ("Intro",
+ * "Solo 1"); na pausa dá para marcar A e B onde a música está.
+ * ------------------------------------------------------------------------- */
+#define GAME_REVOLTA     2.0   /* segundos: despausar volta isso, e a prática começa isso antes de A */
+#define GAME_RITMO_MIN   50    /* velocidade da música na prática (%) */
+#define GAME_RITMO_MAX   100
+#define GAME_RITMO_PASSO 5
+
+typedef struct {
+    bool   ligada;       /* entrou pelo "Prática" do menu inicial */
+    int    ritmo;        /* velocidade da música: GAME_RITMO_MIN..MAX (%) */
+    int    a, b;         /* a seção do começo e a do fim (-1 = marcado na pausa) */
+    double ta, tb;       /* o trecho, em segundos: de ta até antes de tb */
+    double fim_musica;   /* o fim da última nota da música inteira */
+    int    voltas;       /* quantas vezes o trecho já recomeçou sozinho */
+} Pratica;
 
 /* ---------------------------------------------------------------------------
  * Regras do julgamento (depois vêm do config.lua)
@@ -255,6 +277,8 @@ typedef struct {
     bool     novo_recorde;
     long     recorde_anterior;
 
+    int      volta_pct;        /* prática: porcentagem de notas da última volta (-1 = nenhuma ainda) */
+
     /* modo guitarra (judge.c): a palhetada que ainda espera os trastes certos */
     double   palhetada_t;      /* quando (-1 = nenhuma) */
     double   hopo_t;           /* último acerto sem palhetada (HOPO/tap): perdoa a palhetada logo depois */
@@ -276,6 +300,9 @@ typedef struct {
     bool    relogio_audio;
     double  t_audio;
     int     partida;         /* muda a cada partida começada: o main.c (re)inicia o som */
+    int     salto;           /* muda a cada salto no tempo (despausar, o loop da prática): */
+    double  salto_t;         /*   o main.c leva o áudio para salto_t */
+    double  livre_ate;       /* até aqui nada conta contra o jogador: voltando da pausa, ou antes do trecho da prática */
 
     /* partida: o que é de todos */
     Jogador  jog[GAME_MAX_JOGADORES];
@@ -303,6 +330,9 @@ typedef struct {
     char     nome_novo[GAME_NOME];
     int      nome_cursor;      /* a tecla selecionada no teclado da tela */
     bool     nome_minusculas;
+    Pratica  pratica;
+    Pratica  pratica_antes;    /* para o Voltar desfazer, no modo de escolha */
+
     char     titulo[96];       /* nome da música */
     double   inicio;           /* onde a partida começa: negativo = preparação antes da música */
     double   fim;              /* fim da última nota, de todos os jogadores */
@@ -407,6 +437,9 @@ double      Game_janela_perfeito(const Game *g);
 int         Game_n_jogando(const Game *g);       /* jogadores ativos */
 int         Game_vez_teclado(const Game *g);     /* preparação: de quem é a vez no teclado (-1 = ninguém) */
 bool        Game_teclado_livre(const Game *g, int k);   /* tela de jogadores: o teclado pode entrar no cartão k */
+bool        Game_praticando(const Game *g);      /* modo prática, com uma música de verdade */
+double      Game_ritmo(const Game *g);           /* velocidade da música: 1 = normal */
+double      Game_secao_inicio(const Game *g, int i);   /* começo da seção i do chart (s) */
 
 /* game.c, para os outros arquivos do game: troca de tela (com o que cada tela faz ao chegar) */
 void Game_vai_para(Game *g, Tela t);
@@ -435,7 +468,7 @@ void Opcoes_read(Opcoes *o, const char *texto, size_t tamanho);
 
 /* menu.c */
 const Menu *Menu_da_tela(Tela t);   /* NULL para TELA_JOGO */
-const Menu *Menu_pausa(void);
+const Menu *Menu_pausa(bool pratica);
 const Menu *Menu_fim(void);
 void        Menu_valor(const Game *g, int id, char *buf, size_t n);   /* texto de um ITEM_OPCAO / ITEM_VALOR */
 

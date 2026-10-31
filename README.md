@@ -10,8 +10,8 @@ com dArkOS) e distribuído no formato do PortMaster. Também tem build para
 Windows. O jogo lê as músicas (charts) que a comunidade do Clone Hero já
 produziu.
 
-**Estado:** jogável, versão 0.1. Testado no PC (Linux, teclado, controles e
-guitarra USB); as versões anteriores foram testadas no R36S.
+**Estado:** jogável, versão 0.1. Testado no PC (Linux e Windows, teclado,
+controles e guitarra USB); as versões anteriores foram testadas no R36S.
 
 - Charts `.chart` e `.mid`, com áudio em Opus, Ogg Vorbis, MP3 ou WAV (as
   faixas separadas de cada instrumento são misturadas).
@@ -23,10 +23,18 @@ guitarra USB); as versões anteriores foram testadas no R36S.
   guitarra (segura os trastes e palheta).
 - Contas de jogador: os controles, as teclas e o modo ficam salvos na conta.
 - Os menus funcionam inteiros pela guitarra (palhetada e trastes).
+- Modo prática: um trecho da música (pelas seções do chart, ou marcado na
+  hora) em loop, de 50% a 100% da velocidade.
+- Ao despausar, a música volta 2 segundos, com uma contagem, e as notas já
+  tocadas aparecem apagadas para tocar junto.
 - Organização da lista por pastas, título ou artista; ajuste de tempo;
   modo precisão; idiomas.
 
 Nenhuma música acompanha o jogo: quem joga traz a própria biblioteca.
+
+O [manual](docs/MANUAL.md) explica tudo: as músicas, a partida, a prática,
+as configurações, as contas e os problemas comuns
+([English manual](docs/MANUAL.en.md)).
 
 ## Instalando
 
@@ -85,13 +93,51 @@ src/platform/   janela, renderer, input, áudio, arquivos (SDL3)
 src/game/       lógica do jogo (sem SDL; testada em tests/)
 src/draw/       desenho
 assets/         fonte, imagens de fundo e traduções (assets/lang/)
+docs/           o manual do jogo
 tools/          scripts de build e empacotamento
 docker/         ambientes de build (Debian 12: console e Windows)
 packaging/      script de launch e metadados do PortMaster; recursos do Windows
 third_party/    código-fonte das dependências (SDL3, Xiph, dr_mp3, stb_truetype)
 ```
 
-As licenças das bibliotecas e da fonte vão nos pacotes, na pasta `licenses/`.
+## Licença e créditos
+
+O código do Ark Hero é software livre, sob a **GNU General Public License
+v3.0** ([LICENSE](LICENSE)): qualquer um pode usar, estudar, modificar e
+redistribuir, desde que as versões modificadas que forem distribuídas também
+fiquem livres, com o código aberto e a mesma licença.
+
+A fonte e as imagens de fundo não são do projeto e seguem as licenças dos
+seus autores:
+
+- **Fonte:** "Terminal 16 Unicode", de artdzyk, baixada do
+  [dafont](https://www.dafont.com/pt/terminal-16-unicode.font) ("100% Grátis").
+  Detalhes em [assets/fonts/FONTE.txt](assets/fonts/FONTE.txt).
+- **Imagens de fundo** (detalhes em
+  [assets/images/CREDITOS.txt](assets/images/CREDITOS.txt)):
+  - `vaporwave_guitar1.png`: foto de Denis Feofilaktov, no
+    [Unsplash](https://unsplash.com/pt-br/fotografias/guitarra-eletrica-e-amplificador-em-iluminacao-roxa-fraca-6pZwlZ0ff6s)
+    ([Licença Unsplash](https://unsplash.com/license));
+  - `vaporwave_guitar2.png`: foto de Xie lipton, no
+    [Unsplash](https://unsplash.com/pt-br/fotografias/guitarra-eletrica-roxa-e-preta-SjrgIBKSLW0)
+    ([Licença Unsplash](https://unsplash.com/license));
+  - `vaporwave_guitar3.png`: foto de ANTONI SHKRABA production, no
+    [Pexels](https://www.pexels.com/pt-br/foto/bateria-percussao-tambores-instrumento-de-percussao-8041089/)
+    ([Licença Pexels](https://www.pexels.com/license/)).
+
+As bibliotecas usadas, cada uma com a sua licença (todas compatíveis com a
+GPL-3.0):
+
+| Biblioteca | Para quê | Licença |
+|---|---|---|
+| [SDL3](https://libsdl.org) | janela, vídeo, input, áudio | zlib |
+| [libogg](https://xiph.org/ogg/), [libvorbis](https://xiph.org/vorbis/) | áudio Ogg Vorbis | BSD 3 cláusulas |
+| [opus](https://opus-codec.org), [opusfile](https://opus-codec.org) | áudio Opus | BSD 3 cláusulas |
+| [dr_mp3](https://github.com/mackron/dr_libs) | áudio MP3 | domínio público (Unlicense) ou MIT-0 |
+| [stb_truetype](https://github.com/nothings/stb) | a fonte | domínio público (Unlicense) ou MIT |
+
+Os pacotes levam todas essas licenças na pasta `licenses/`. O formato dos
+charts e as músicas são da comunidade do Clone Hero.
 
 ## Sobre o uso de IA
 

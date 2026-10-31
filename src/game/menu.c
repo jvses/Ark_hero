@@ -14,6 +14,7 @@
 
 static const ItemMenu ITENS_INICIO[] = {
     { N_("Jogar"),         ID_JOGAR,  ITEM_BOTAO, false },
+    { N_("Prática"),       ID_PRATICA, ITEM_BOTAO, false },
     { N_("Configurações"), ID_CONFIG, ITEM_BOTAO, false },
     { N_("Sair"),          ID_SAIR,   ITEM_BOTAO, false },
 };
@@ -58,10 +59,29 @@ static const ItemMenu ITENS_AUDIO[] = {
     { N_("Voltar"),                     ID_VOLTAR,         ITEM_BOTAO, false },
 };
 
+/* a prática: o trecho e a velocidade, antes de começar */
+static const ItemMenu ITENS_PRATICA[] = {
+    { N_("Começo (A)"),            ID_TRECHO_A, ITEM_VALOR, false },
+    { N_("Fim (B)"),               ID_TRECHO_B, ITEM_VALOR, false },
+    { N_("Velocidade da música"),  ID_RITMO,    ITEM_VALOR, false },
+    { N_("Começar"),               ID_COMECAR,  ITEM_BOTAO, false },
+    { N_("Voltar"),                ID_VOLTAR,   ITEM_BOTAO, false },
+};
+
 static const ItemMenu ITENS_PAUSA[] = {
     { N_("Continuar"),       ID_CONTINUAR, ITEM_BOTAO, false },
     { N_("Reiniciar"),       ID_REINICIAR, ITEM_BOTAO, false },
     { N_("Sair para o menu"), ID_SAIR_MENU, ITEM_BOTAO, false },
+};
+
+static const ItemMenu ITENS_PAUSA_PRATICA[] = {
+    { N_("Continuar"),             ID_CONTINUAR,       ITEM_BOTAO, false },
+    { N_("Velocidade da música"),  ID_RITMO,           ITEM_VALOR, false },
+    { N_("Marcar o começo aqui"),  ID_MARCA_A,         ITEM_BOTAO, false },
+    { N_("Marcar o fim aqui"),     ID_MARCA_B,         ITEM_BOTAO, false },
+    { N_("Escolher o trecho"),     ID_ESCOLHER_TRECHO, ITEM_BOTAO, false },
+    { N_("Recomeçar o trecho"),    ID_REINICIAR,       ITEM_BOTAO, false },
+    { N_("Sair para o menu"),      ID_SAIR_MENU,       ITEM_BOTAO, false },
 };
 
 static const ItemMenu ITENS_FIM[] = {
@@ -74,10 +94,12 @@ static const Menu MENUS[TELA_N] = {
     [TELA_CONFIG]    = { N_("Configurações"), ITENS_CONFIG,    N_ITENS(ITENS_CONFIG) },
     [TELA_CONTROLES] = { N_("Controles"),     ITENS_CONTROLES, N_ITENS(ITENS_CONTROLES) },
     [TELA_AUDIO]     = { N_("Teste de áudio"), ITENS_AUDIO,    N_ITENS(ITENS_AUDIO) },
+    [TELA_PRATICA]   = { N_("Prática"),       ITENS_PRATICA,   N_ITENS(ITENS_PRATICA) },
     [TELA_JOGO]      = { NULL, NULL, 0 },
 };
 
 static const Menu MENU_PAUSA = { N_("Pausa"), ITENS_PAUSA, N_ITENS(ITENS_PAUSA) };
+static const Menu MENU_PAUSA_PRATICA = { N_("Pausa"), ITENS_PAUSA_PRATICA, N_ITENS(ITENS_PAUSA_PRATICA) };
 static const Menu MENU_FIM   = { N_("Fim da música"), ITENS_FIM, N_ITENS(ITENS_FIM) };
 
 const Menu *Menu_da_tela(Tela t)
@@ -86,9 +108,28 @@ const Menu *Menu_da_tela(Tela t)
     return &MENUS[t];
 }
 
-const Menu *Menu_pausa(void)
+const Menu *Menu_pausa(bool pratica)
 {
-    return &MENU_PAUSA;
+    return pratica ? &MENU_PAUSA_PRATICA : &MENU_PAUSA;
+}
+
+/* "1:05" */
+static void minutos(char *buf, size_t n, double t)
+{
+    const int s = t > 0.0 ? (int)t : 0;
+    snprintf(buf, n, "%d:%02d", s / 60, s % 60);
+}
+
+/* uma ponta do trecho: o nome da seção, ou o tempo (marcado na pausa) */
+static void ponta(const Game *g, int secao, double t, char *buf, size_t n)
+{
+    if (secao < 0 || secao >= g->arquivo.n_secoes) {
+        minutos(buf, n, t);
+        return;
+    }
+    const SecaoBruta *s = &g->arquivo.secoes[secao];
+    if (s->nome[0]) snprintf(buf, n, "%s", s->nome);
+    else            snprintf(buf, n, T("Compasso %d"), s->compasso);
 }
 
 const Menu *Menu_fim(void)
@@ -117,6 +158,9 @@ void Menu_valor(const Game *g, int id, char *buf, size_t n)
         break;
     }
     case ID_IDIOMA:     snprintf(buf, n, "%s", g->nomes_idioma[Game_language_index(g)]); break;
+    case ID_TRECHO_A:   ponta(g, g->pratica.a, g->pratica.ta, buf, n); break;
+    case ID_TRECHO_B:   ponta(g, g->pratica.b, g->pratica.tb, buf, n); break;
+    case ID_RITMO:      snprintf(buf, n, "%d%%", g->pratica.ritmo); break;
     default:            if (n > 0) buf[0] = '\0';                         break;
     }
 }

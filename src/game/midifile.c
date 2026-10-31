@@ -9,6 +9,7 @@
  *   "PART BASS"          baixo        "PART RHYTHM"       guitarra rítmica
  *   "PART GUITAR COOP"   coop         "PART KEYS"         teclado de 5 notas
  *   (todas com o mesmo esquema de notas abaixo)
+ *   "EVENTS"             as partes da música: texto "[section verse_1]" ou "[prc_verse_1]"
  *
  * Dentro da trilha da guitarra, cada dificuldade é uma faixa de notas MIDI:
  *
@@ -134,8 +135,9 @@ static bool le_trilha(ArquivoChart *a, Leitor *r, Trilha *t)
                 if (!ChartFile_add_compasso(a, tick, d[0], 1 << (d[1] < 8 ? d[1] : 2))) return false;
             } else if (tipo == 0x03 && !t->nome[0]) {      /* nome da trilha */
                 snprintf(t->nome, sizeof(t->nome), "%.*s", (int)n, (const char *)d);
-            } else if (tipo == 0x01 && n >= 14 && contem(d, n, "ENHANCED_OPENS")) {
-                t->aberta_extra = true;
+            } else if (tipo == 0x01 || tipo == 0x06) {      /* texto ou marcador */
+                if (n >= 14 && contem(d, n, "ENHANCED_OPENS")) t->aberta_extra = true;
+                else if (!ChartFile_add_secao(a, tick, (const char *)d, n)) return false;   /* "[section Intro]" */
             }
             continue;
         }

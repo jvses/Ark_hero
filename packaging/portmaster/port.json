@@ -11,9 +11,9 @@
         "porter": [
             "jvses"
         ],
-        "desc": "A guitar rhythm game that plays the songs made by the Clone Hero community (.chart or .mid charts with ogg, opus, mp3 or wav audio). Up to 4 players on the built-in controls, USB controllers, USB guitars or a keyboard, in controller mode or guitar mode (frets + strum), with star power, whammy, sustains and HOPOs.",
+        "desc": "A guitar rhythm game that plays the songs made by the Clone Hero community (.chart or .mid charts with ogg, opus, mp3 or wav audio). Up to 4 players on the built-in controls, USB controllers, USB guitars or a keyboard, in controller mode or guitar mode (frets + strum), with star power, whammy, sustains and HOPOs. Practice mode loops a section at 50 to 100% speed.",
         "desc_md": null,
-        "inst": "Ready to run. No songs are included: copy Clone Hero song folders into ports/arkhero/songs/. Without songs, the Demonstration entry plays sample notes with a metronome.",
+        "inst": "Ready to run. No songs are included: copy Clone Hero song folders into ports/arkhero/songs/. Without songs, the Demo entry plays sample notes with a metronome.",
         "inst_md": null,
         "genres": [
             "rhythm"

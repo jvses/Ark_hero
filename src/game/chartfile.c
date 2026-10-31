@@ -45,7 +45,7 @@ static bool cresce(void **v, int *cap, int n, size_t tam)
 /* ---------------------------------------------------------------------------
  * Leitura linha a linha
  * ------------------------------------------------------------------------- */
-typedef enum { SEC_NENHUMA, SEC_SONG, SEC_SYNC, SEC_DIF } Secao;
+typedef enum { SEC_NENHUMA, SEC_SONG, SEC_SYNC, SEC_EVENTS, SEC_DIF } Secao;
 
 static const char *pula_espacos(const char *p, const char *fim)
 {
@@ -99,6 +99,20 @@ static bool linha_sync(ArquivoChart *a, const char *p, const char *fim)
         return ChartFile_add_compasso(a, tick, (int)x, y >= 0 ? 1 << y : 4);   /* "TS 6 3" = 6/8 */
     }
     return true;   /* "A" (âncora) e o resto: ignorados */
+}
+
+/* [Events]: "768 = E \"section Intro\"" (os outros eventos, como letras, ficam de fora) */
+static bool linha_events(ArquivoChart *a, const char *p, const char *fim)
+{
+    char *depois;
+    const unsigned long tick = strtoul(p, &depois, 10);
+    if (depois == p) return true;
+    const char *q = pula_espacos(depois, fim);
+    if (q >= fim || *q != '=') return true;
+    q = pula_espacos(q + 1, fim);
+    if (q >= fim || *q != 'E') return true;
+    q = pula_espacos(q + 1, fim);
+    return ChartFile_add_secao(a, (uint32_t)tick, q, (size_t)(fim - q));
 }
 
 static bool linha_dif(Pista_Dif *d, const char *p, const char *fim)
@@ -217,6 +231,7 @@ bool ChartFile_parse(ArquivoChart *a, const char *texto, size_t tamanho, char *e
             secao = SEC_NENHUMA;
             if (n == 4 && strncmp(a0 + 1, "Song", 4) == 0)      secao = SEC_SONG;
             else if (n == 9 && strncmp(a0 + 1, "SyncTrack", 9) == 0) secao = SEC_SYNC;
+            else if (n == 6 && strncmp(a0 + 1, "Events", 6) == 0)    secao = SEC_EVENTS;
             else {
                 for (int d = 0; d < DIF_N; d++) {
                     const size_t nd = strlen(SECAO_DIF[d]);
@@ -236,6 +251,7 @@ bool ChartFile_parse(ArquivoChart *a, const char *texto, size_t tamanho, char *e
         switch (secao) {
         case SEC_SONG: linha_song(a, a0, b0);              break;
         case SEC_SYNC: ok = linha_sync(a, a0, b0);         break;
+        case SEC_EVENTS: ok = linha_events(a, a0, b0);     break;
         case SEC_DIF:  ok = linha_dif(dif, a0, b0);        break;
         default:       break;
         }
@@ -283,6 +299,80 @@ bool ChartFile_add_frase(Pista_Dif *d, uint32_t tick, uint32_t duracao)
     return true;
 }
 
+static bool guarda_secao(ArquivoChart *a, uint32_t tick, int compasso, const char *nome)
+{
+    if (!cresce((void **)&a->secoes, &a->cap_secoes, a->n_secoes, sizeof(SecaoBruta))) return false;
+    SecaoBruta *s = &a->secoes[a->n_secoes++];
+    *s = (SecaoBruta){ .tick = tick, .compasso = compasso };
+    Texto_copia(s->nome, sizeof(s->nome), nome);
+    return true;
+}
+
+/* "section Verse 1" (.chart, e .mid antigo entre colchetes) ou "prc_verse_1"
+   (.mid do Rock Band 3) viram "Verse 1"; o resto do texto é ignorado */
+bool ChartFile_add_secao(ArquivoChart *a, uint32_t tick, const char *texto, size_t n)
+{
+    char s[128];
+    if (n >= sizeof(s)) n = sizeof(s) - 1;
+    memcpy(s, texto, n);
+    s[n] = '\0';
+    char *p = s, *fim = s + strlen(s);
+    while (*p == '[' || *p == '"' || isspace((unsigned char)*p)) p++;
+    while (fim > p && (fim[-1] == ']' || fim[-1] == '"' || isspace((unsigned char)fim[-1]))) *--fim = '\0';
+    if (strncmp(p, "section", 7) == 0 && (p[7] == ' ' || p[7] == '_')) p += 8;
+    else if (strncmp(p, "prc_", 4) == 0)                               p += 4;
+    else                                                                 return true;
+    for (char *c = p; *c; c++)
+        if (*c == '_') *c = ' ';
+    while (*p == ' ') p++;
+    if (!*p) return true;
+    if (*p >= 'a' && *p <= 'z') *p = (char)(*p - 'a' + 'A');
+    return guarda_secao(a, tick, 0, p);
+}
+
+static int compara_secao(const void *x, const void *y)
+{
+    const SecaoBruta *a = x, *b = y;
+    return (a->tick > b->tick) - (a->tick < b->tick);
+}
+
+/* Sem seções no arquivo, o modo prática ainda precisa de onde escolher: uma
+   parte a cada 8 compassos, até a última nota (o nome fica vazio; quem
+   mostra escreve "Compasso 9"). */
+static bool secoes_por_compasso(ArquivoChart *a)
+{
+    uint32_t ultima = 0;
+    for (int i = 0; i < INSTR_N; i++)
+        for (int d = 0; d < DIF_N; d++)
+            for (int k = 0; k < a->dif[i][d].n_notas; k++)
+                if (a->dif[i][d].notas[k].tick > ultima) ultima = a->dif[i][d].notas[k].tick;
+
+    int ts = -1;
+    for (uint32_t tick = 0, compasso = 1; tick <= ultima; compasso++) {
+        while (ts + 1 < a->n_compassos && a->compassos[ts + 1].tick <= tick) ts++;
+        uint32_t tam = (uint32_t)(4 * a->resolucao);
+        if (ts >= 0 && a->compassos[ts].den > 0)
+            tam = (uint32_t)(a->compassos[ts].num * a->resolucao * 4 / a->compassos[ts].den);
+        if (tam == 0) tam = (uint32_t)(4 * a->resolucao);
+        if (compasso % 8 == 1 && !guarda_secao(a, tick, (int)compasso, "")) return false;
+        tick += tam;
+    }
+    return true;
+}
+
+/* em ordem, uma por tick, com o tempo de cada uma */
+static bool fecha_secoes(ArquivoChart *a)
+{
+    if (a->n_secoes > 0) qsort(a->secoes, (size_t)a->n_secoes, sizeof(SecaoBruta), compara_secao);
+    int n = 0;
+    for (int i = 0; i < a->n_secoes; i++)
+        if (n == 0 || a->secoes[i].tick != a->secoes[n - 1].tick) a->secoes[n++] = a->secoes[i];
+    a->n_secoes = n;
+    if (n == 0 && !secoes_por_compasso(a)) return false;
+    for (int i = 0; i < a->n_secoes; i++) a->secoes[i].t = ChartFile_tempo(a, a->secoes[i].tick) + a->offset;
+    return true;
+}
+
 bool ChartFile_finish(ArquivoChart *a, char *erro, size_t n_erro)
 {
     if (a->resolucao <= 0) a->resolucao = RESOLUCAO_PADRAO;
@@ -303,6 +393,11 @@ bool ChartFile_finish(ArquivoChart *a, char *erro, size_t n_erro)
         ChartFile_free(a);
         return false;
     }
+    if (!fecha_secoes(a)) {
+        snprintf(erro, n_erro, "sem memoria nas secoes");
+        ChartFile_free(a);
+        return false;
+    }
     return true;
 }
 
@@ -310,6 +405,7 @@ void ChartFile_free(ArquivoChart *a)
 {
     free(a->tempos);
     free(a->compassos);
+    free(a->secoes);
     for (int i = 0; i < INSTR_N; i++) {
         for (int d = 0; d < DIF_N; d++) {
             free(a->dif[i][d].notas);

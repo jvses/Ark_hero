@@ -65,6 +65,7 @@ void Game_init(Game *g)
     g->opcoes.mostrar_julgamento = false;
     g->opcoes.ajuste_ms   = 0;
     g->opcoes.som_erro    = false;
+    g->pratica.ritmo      = GAME_RITMO_MAX;
     snprintf(g->opcoes.idioma, sizeof(g->opcoes.idioma), "%s", "pt");
     Game_add_language(g, "pt", "Português");   /* o embutido: os textos do código */
     for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
@@ -107,7 +108,7 @@ const Menu *Game_menu(const Game *g)
     switch (g->tela) {
     case TELA_JOGO:
         if (g->terminou) return Menu_fim();
-        return g->pausado ? Menu_pausa() : NULL;
+        return g->pausado ? Menu_pausa(Game_praticando(g)) : NULL;
     case TELA_MUSICAS:    return &g->menu_musicas;
     case TELA_JOGADORES:  return NULL;   /* telas próprias: um cartão por jogador */
     case TELA_PREPARAR:   return NULL;
@@ -203,6 +204,47 @@ static bool divide_teclado(const Game *g)
     return false;
 }
 
+/* modo prática, com uma música de verdade (a demonstração toca normal) */
+bool Game_praticando(const Game *g)
+{
+    return g->pratica.ligada && g->musica >= 0 && g->arquivo_ok;
+}
+
+double Game_ritmo(const Game *g)
+{
+    return Game_praticando(g) ? g->pratica.ritmo / 100.0 : 1.0;
+}
+
+/* o delay do song.ini da música escolhida (s) */
+static double atraso_musica(const Game *g)
+{
+    return (g->musica >= 0 && g->musica < g->n_musicas) ? g->musicas[g->musica].atraso_ms / 1000.0 : 0.0;
+}
+
+/* a primeira seção vale desde o começo da música (as notas antes dela também
+   precisam de um trecho) */
+double Game_secao_inicio(const Game *g, int i)
+{
+    const double t = g->arquivo.secoes[i].t + atraso_musica(g);
+    return (i == 0 && t > 0.0) ? 0.0 : t;
+}
+
+/* o fim da seção i: o começo da próxima, ou um pouco depois da última nota */
+static double fim_da_secao(const Game *g, int i)
+{
+    if (i + 1 < g->arquivo.n_secoes) return Game_secao_inicio(g, i + 1);
+    const double t = Game_secao_inicio(g, i);
+    return (t > g->pratica.fim_musica ? t : g->pratica.fim_musica) + 1.0;
+}
+
+/* a seção onde está o tempo t */
+static int secao_de(const Game *g, double t)
+{
+    int i = 0;
+    while (i + 1 < g->arquivo.n_secoes && Game_secao_inicio(g, i + 1) <= t) i++;
+    return i;
+}
+
 /* Quantos segundos de música cabem na pista. Velocidade maior = janela menor
  * = notas descendo mais rápido. */
 double Game_janela_visivel(const Game *g)
@@ -258,17 +300,162 @@ static void zera_jogador(Jogador *j)
     j->trastes_antes    = 0;
 }
 
+/* O chart de cada jogador ativo, da música inteira, a partir do arquivo.
+   Devolve -1, ou o jogador cuja parte veio vazia. */
+static int monta_charts(Game *g)
+{
+    libera_charts(g);
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
+        Jogador *j = &g->jog[k];
+        if (j->ativo && !Chart_from_file(&j->chart, &g->arquivo, j->instrumento, j->dificuldade, atraso_musica(g)))
+            return k;
+    }
+    junta_charts(g);
+    return -1;
+}
+
+/* prática: o chart de cada um só com as notas do trecho, e a partida
+   começando GAME_REVOLTA segundos (no relógio, não na música) antes dele */
+static void recorta_trecho(Game *g)
+{
+    monta_charts(g);
+    const double antes = g->pratica.ta - GAME_REVOLTA * Game_ritmo(g);
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
+        Chart *c = &g->jog[k].chart;
+        if (!g->jog[k].ativo) continue;
+        Chart_recorta(c, g->pratica.ta, g->pratica.tb);
+        if (antes > c->inicio) c->inicio = antes;
+    }
+}
+
+/* Tudo pendente, no começo (o do trecho, na prática). Até o trecho chegar,
+   apertar sem nota não conta (a pista ainda não tem nada). */
+static void zera_partida(Game *g)
+{
+    if (Game_praticando(g)) recorta_trecho(g);
+    junta_charts(g);
+    g->t         = g->inicio;   /* negativo: tempo de preparação antes da música */
+    g->livre_ate = Game_praticando(g) ? g->pratica.ta : g->inicio;
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) zera_jogador(&g->jog[k]);
+}
+
 /* começa (ou recomeça) a partida do zero */
 static void comeca_partida(Game *g)
 {
-    junta_charts(g);
+    zera_partida(g);
     g->partida++;            /* o main.c vê a mudança e começa o som do zero */
-    g->t         = g->inicio;   /* negativo: tempo de preparação antes da música */
     g->pausado   = false;
     g->terminou  = false;
     g->sel_pausa = 0;
     g->pausas    = 0;
-    for (int k = 0; k < GAME_MAX_JOGADORES; k++) zera_jogador(&g->jog[k]);
+    g->pratica.voltas = 0;
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) g->jog[k].volta_pct = -1;
+}
+
+/* o deslocamento do ajuste de tempo, em segundos de música */
+static double ajuste_s(const Game *g)
+{
+    return g->opcoes.ajuste_ms / 1000.0 * Game_ritmo(g);
+}
+
+static void avanca_visiveis(const Game *g, Jogador *j);
+
+/* Pula para o tempo t da música (para trás). O main.c vê o salto e leva o
+   áudio junto; as notas já julgadas continuam como estavam. */
+static void salta(Game *g, double t)
+{
+    g->t       = t;
+    g->salto++;
+    g->salto_t = t - ajuste_s(g);   /* o relógio do jogo é o do áudio mais o ajuste */
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
+        Jogador *j = &g->jog[k];
+        j->primeira_visivel = 0;    /* o que já tinha passado volta para a pista */
+        j->palhetada_t      = -1.0;
+        for (int f = 0; f < 5; f++) j->acerto_t[f] = -1.0e9;   /* sem repetir explosões e "Perfeito" */
+        j->ultimo_julgamento_t = -1.0e9;
+        avanca_visiveis(g, j);
+    }
+}
+
+/* Sai da pausa: a música volta GAME_REVOLTA segundos (sem passar do começo),
+   para o jogador se situar. Até chegar de novo onde parou, ele toca junto
+   sem que nada conte contra: errar fora de nota não pune, e os sustains e o
+   star power ficam como estavam. */
+static void retoma(Game *g)
+{
+    g->pausado    = false;
+    g->escolhendo = false;
+    if (g->t > g->livre_ate) g->livre_ate = g->t;
+    double t = g->t - GAME_REVOLTA * Game_ritmo(g);
+    if (t < g->inicio) t = g->inicio;
+    salta(g, t);
+}
+
+/* prática: o trecho acabou, volta para o começo dele */
+static void repete_trecho(Game *g)
+{
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
+        Jogador *j = &g->jog[k];
+        const int total = j->acertos + j->erros;
+        if (j->ativo) j->volta_pct = total ? (100 * j->acertos + total / 2) / total : -1;
+    }
+    g->pratica.voltas++;
+    zera_partida(g);
+    salta(g, g->t);
+}
+
+/* A linha de compasso mais perto de t, para trás (antes) ou para a frente:
+   marcar A ou B na pausa cai no começo de um compasso. */
+static double compasso_perto(const Game *g, double t, bool antes)
+{
+    const Chart *c = &g->jog[Game_leader(g) >= 0 ? Game_leader(g) : 0].chart;
+    double achado = t;
+    for (int i = 0; i < c->n_batidas; i++) {
+        if (!c->batidas[i].forte) continue;
+        const double b = c->batidas[i].t;
+        if (antes && b <= t) achado = b;
+        if (!antes && b >= t) return b;
+    }
+    return achado;
+}
+
+/* o trecho da música inteira, como a prática começa */
+static void pratica_nova(Game *g)
+{
+    Pratica *p = &g->pratica;
+    p->fim_musica = g->fim;
+    p->a  = 0;
+    p->b  = g->arquivo.n_secoes - 1;
+    p->ta = Game_secao_inicio(g, p->a);
+    p->tb = fim_da_secao(g, p->b);
+}
+
+/* Pausa da prática: "começo aqui" vale a partir da próxima volta; "fim aqui"
+   fecha o trecho e já recomeça nele. */
+static void marca_a(Game *g)
+{
+    Pratica *p = &g->pratica;
+    p->a  = -1;
+    p->ta = compasso_perto(g, g->t, true);
+    if (p->tb <= p->ta + 0.5) {
+        p->b  = g->arquivo.n_secoes - 1;
+        p->tb = fim_da_secao(g, p->b);
+    }
+    avisa(g, N_("Começo do trecho marcado"));
+}
+
+static void marca_b(Game *g)
+{
+    Pratica *p = &g->pratica;
+    const double tb = compasso_perto(g, g->t, false);
+    if (tb <= p->ta + 0.5) {
+        avisa(g, N_("O fim precisa vir depois do começo"));
+        return;
+    }
+    p->b  = -1;
+    p->tb = tb;
+    comeca_partida(g);
+    avisa(g, N_("Trecho marcado: repetindo"));
 }
 
 void Game_vai_para(Game *g, Tela t)
@@ -276,6 +463,7 @@ void Game_vai_para(Game *g, Tela t)
     g->tela       = t;
     g->escolhendo = false;
     if (t == TELA_JOGO) comeca_partida(g);
+    if (t == TELA_PRATICA) monta_charts(g);   /* a música inteira (a partida recorta o trecho) */
     if (t == TELA_JOGADORES) Jogadores_entra(g);
     if (t == TELA_PREPARAR) {
         for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
@@ -299,8 +487,9 @@ static void volta(Game *g)
     case TELA_PREPARAR:   Game_vai_para(g, TELA_MUSICAS); break;
     case TELA_CARREGANDO:
         g->pedido = PEDIDO_CANCELAR_CARGA;
-        Game_vai_para(g, TELA_PREPARAR);
+        Game_vai_para(g, Game_praticando(g) ? TELA_PRATICA : TELA_PREPARAR);
         break;
+    case TELA_PRATICA:    Game_vai_para(g, TELA_PREPARAR); break;
     case TELA_CONFIG:
         g->pedido = PEDIDO_SALVAR_OPCOES;   /* saindo das configurações: grava */
         Game_vai_para(g, TELA_INICIO);
@@ -314,7 +503,7 @@ static void volta(Game *g)
         }
         break;
     case TELA_AUDIO:     Game_vai_para(g, TELA_CONFIG); break;
-    case TELA_JOGO:      g->pausado = false;       break;   /* "voltar" na pausa = continuar */
+    case TELA_JOGO:      retoma(g);                break;   /* "voltar" na pausa = continuar */
     default:             break;
     }
 }
@@ -346,6 +535,25 @@ static void ajusta(Game *g, int id, int passo)
     case ID_SOM_ERRO:
         o->som_erro = !o->som_erro;
         if (o->som_erro) g->pedido = PEDIDO_TOCAR_SOM_ERRO;   /* para saber como ele soa */
+        break;
+    case ID_TRECHO_A: {   /* Esq/Dir andam pelas seções; um começo depois do fim leva o fim junto */
+        Pratica *pr = &g->pratica;
+        int a = pr->a >= 0 ? pr->a + passo : secao_de(g, pr->ta) + (passo > 0 ? 1 : 0);
+        pr->a  = limita(a, 0, g->arquivo.n_secoes - 1);
+        pr->ta = Game_secao_inicio(g, pr->a);
+        if (pr->tb <= pr->ta) { pr->b = pr->a; pr->tb = fim_da_secao(g, pr->b); }
+        break;
+    }
+    case ID_TRECHO_B: {
+        Pratica *pr = &g->pratica;
+        int b = pr->b >= 0 ? pr->b + passo : secao_de(g, pr->tb - 0.001) + (passo > 0 ? 0 : -1);
+        pr->b  = limita(b, 0, g->arquivo.n_secoes - 1);
+        pr->tb = fim_da_secao(g, pr->b);
+        if (pr->ta >= pr->tb) { pr->a = pr->b; pr->ta = Game_secao_inicio(g, pr->a); }
+        break;
+    }
+    case ID_RITMO:
+        g->pratica.ritmo = limita(g->pratica.ritmo + GAME_RITMO_PASSO * passo, GAME_RITMO_MIN, GAME_RITMO_MAX);
         break;
     case ID_JOGADOR:
         g->controles_jogador = (g->controles_jogador + passo + GAME_MAX_JOGADORES) % GAME_MAX_JOGADORES;
@@ -446,27 +654,27 @@ bool Game_open_chart(Game *g, const char *texto, size_t tamanho)
     return true;
 }
 
-/* todos prontos: monta o chart de cada um e pede o áudio */
+/* Todos prontos: monta o chart de cada um e pede o áudio. Na prática, o
+   áudio carrega enquanto o jogador escolhe o trecho. */
 static void monta_partida(Game *g)
 {
     const bool tem_musica = g->musica >= 0 && g->musica < g->n_musicas;
-    const double atraso = tem_musica ? g->musicas[g->musica].atraso_ms / 1000.0 : 0.0;
-    libera_charts(g);
-    for (int k = 0; k < GAME_MAX_JOGADORES; k++) {
-        Jogador *j = &g->jog[k];
-        if (!j->ativo) continue;
-        if (!Chart_from_file(&j->chart, &g->arquivo, j->instrumento, j->dificuldade, atraso)) {
-            avisa(g, N_("Essa parte do chart está vazia"));
-            j->pronto = false;
-            return;
-        }
+    const int vazio = monta_charts(g);
+    if (vazio >= 0) {
+        avisa(g, N_("Essa parte do chart está vazia"));
+        g->jog[vazio].pronto = false;
+        return;
     }
     snprintf(g->titulo, sizeof(g->titulo), "%s", tem_musica ? g->musicas[g->musica].titulo : "?");
     g->duracao_audio = 0.0;
-    junta_charts(g);
     g->pedido        = PEDIDO_CARREGAR_MUSICA;   /* o main.c decodifica o áudio; depois Game_audio_ready */
     g->pedido_indice = g->musica;
-    Game_vai_para(g, TELA_CARREGANDO);
+    if (Game_praticando(g)) {
+        pratica_nova(g);
+        Game_vai_para(g, TELA_PRATICA);
+    } else {
+        Game_vai_para(g, TELA_CARREGANDO);
+    }
 }
 
 static void entra(Game *g, Jogador *j)
@@ -618,7 +826,19 @@ static void executa(Game *g, const ItemMenu *item)
     }
 
     switch (item->id) {
-    case ID_JOGAR:     Game_vai_para(g, TELA_JOGADORES); break;
+    case ID_JOGAR:
+    case ID_PRATICA:
+        g->pratica.ligada = item->id == ID_PRATICA;
+        Game_vai_para(g, TELA_JOGADORES);
+        break;
+    case ID_COMECAR:   /* tela da prática: se o áudio já carregou, o main.c responde na hora */
+        g->pedido        = PEDIDO_CARREGAR_MUSICA;
+        g->pedido_indice = g->musica;
+        Game_vai_para(g, TELA_CARREGANDO);
+        break;
+    case ID_MARCA_A:          marca_a(g);                      break;
+    case ID_MARCA_B:          marca_b(g);                      break;
+    case ID_ESCOLHER_TRECHO:  Game_vai_para(g, TELA_PRATICA);  break;
     case ID_DEMO:
         g->musica = -1;
         carrega_demo(g);
@@ -639,7 +859,7 @@ static void executa(Game *g, const ItemMenu *item)
         g->pedido = PEDIDO_RESTAURAR_CONTROLES;
         avisa(g, N_("Controles restaurados"));
         break;
-    case ID_CONTINUAR: g->pausado = false;          break;
+    case ID_CONTINUAR: retoma(g);                   break;
     case ID_REINICIAR: comeca_partida(g);           break;
     case ID_SAIR_MENU: Game_vai_para(g, TELA_MUSICAS);   break;
     default:
@@ -688,6 +908,7 @@ static void desfaz_escolha(Game *g)
 {
     const bool idioma = strcmp(g->opcoes.idioma, g->opcoes_antes.idioma) != 0;
     g->opcoes            = g->opcoes_antes;
+    g->pratica           = g->pratica_antes;
     g->controles_jogador = g->jogador_antes;
     g->escolhendo        = false;
     if (idioma) g->pedido = PEDIDO_TROCAR_IDIOMA;
@@ -734,6 +955,7 @@ static void navega(Game *g, const Menu *m, int *sel, const Botoes *b, double dt)
         } else if (item->tipo == ITEM_VALOR) {
             g->escolhendo    = true;
             g->opcoes_antes  = g->opcoes;
+            g->pratica_antes = g->pratica;
             g->jogador_antes = g->controles_jogador;
         } else {
             executa(g, item);
@@ -790,8 +1012,8 @@ static void atualiza_jogo(Game *g, const Botoes *b, int n, const Botoes *u, cons
         return;
     }
     if (g->pausado) {
-        if (u->apertados & ACAO_BIT(ACAO_PAUSA)) { g->pausado = false; return; }
-        navega(g, Menu_pausa(), &g->sel_pausa, u, dt);
+        if (u->apertados & ACAO_BIT(ACAO_PAUSA)) { retoma(g); return; }
+        navega(g, Menu_pausa(Game_praticando(g)), &g->sel_pausa, u, dt);
         return;
     }
     if ((u->apertados & ACAO_BIT(ACAO_PAUSA)) || (teclado && (teclado->apertados & ACAO_BIT(ACAO_VOLTA)))) {
@@ -802,10 +1024,13 @@ static void atualiza_jogo(Game *g, const Botoes *b, int n, const Botoes *u, cons
     /* com áudio, o tempo é o do áudio; ele nunca volta para trás */
     /* o ajuste de tempo desloca o relógio do áudio: com +48 ms, o jogo "vê" a
        música 48 ms à frente, compensando o atraso entre o som sair e chegar */
-    double novo = g->relogio_audio ? g->t_audio + g->opcoes.ajuste_ms / 1000.0 : g->t + dt;
+    /* sem áudio, o relógio anda com o dt (na velocidade da prática) */
+    double novo = g->relogio_audio ? g->t_audio + ajuste_s(g) : g->t + dt * Game_ritmo(g);
     if (novo < g->t) novo = g->t;
     const double passo = novo - g->t;
     g->t = novo;
+    /* voltando da pausa: até chegar onde parou, sustains e star power esperam */
+    const bool livre = g->t < g->livre_ate;
 
     /* acaba quando acabam as notas de todos e a música (o que vier depois) */
     const double fim = g->fim + FIM_ESPERA > g->duracao_audio ? g->fim + FIM_ESPERA : g->duracao_audio;
@@ -819,13 +1044,18 @@ static void atualiza_jogo(Game *g, const Botoes *b, int n, const Botoes *u, cons
         j->whammy = bk->whammy;
         if (g->guitarra[k]) Judge_guitarra(g, j, bk->apertados, bk->segurados);
         else                Judge_toques(g, j, bk->apertados, bk->segurados);
-        Judge_sustains(g, j, bk->segurados, passo);
+        if (!livre) Judge_sustains(g, j, bk->segurados, passo);
         Judge_varre_erros(g, j);
-        star_power(g, j, bk, dt);
+        if (!livre) star_power(g, j, bk, dt * Game_ritmo(g));
         avanca_visiveis(g, j);
         if (j->proxima < j->chart.n) acabou = false;
     }
 
+    /* a prática não acaba: no fim do trecho (e das notas dele), volta para o começo */
+    if (Game_praticando(g)) {
+        if (g->t > (g->pratica.tb > g->fim ? g->pratica.tb : g->fim) + 0.2) repete_trecho(g);
+        return;
+    }
     if (acabou) {
         g->terminou  = true;
         g->sel_pausa = 0;

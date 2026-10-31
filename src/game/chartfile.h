@@ -12,6 +12,7 @@
  * Seções lidas:
  *   [Song]       Resolution (ticks por semínima), Offset (s)
  *   [SyncTrack]  "tick = B bpm*1000", "tick = TS num [expoente do denominador]"
+ *   [Events]     "tick = E \"section Intro\"": as partes da música (modo prática)
  *   [<Dificuldade><Instrumento>], como [ExpertSingle] (guitarra), [HardDoubleBass]
  *                (baixo), [EasyDoubleRhythm] (rítmica), [MediumDoubleGuitar]
  *                (coop), [ExpertKeyboard] (teclado de 5 notas):
@@ -60,6 +61,14 @@ typedef struct {
     uint32_t tick, duracao;
 } FraseBruta;
 
+/* uma parte da música ("Intro", "Solo 1"), para o modo prática */
+typedef struct {
+    uint32_t tick;
+    double   t;          /* segundos, com o Offset (sem o delay do song.ini) */
+    int      compasso;   /* nome vazio: a parte foi criada pelo jogo, a cada 8 compassos; este é o primeiro */
+    char     nome[40];
+} SecaoBruta;
+
 typedef struct {
     NotaBruta  *notas;
     int         n_notas, cap_notas;
@@ -75,6 +84,8 @@ typedef struct {
     int            n_tempos, cap_tempos;
     Compasso      *compassos;
     int            n_compassos, cap_compassos;
+    SecaoBruta    *secoes;   /* em ordem; sem nenhuma no arquivo, uma a cada 8 compassos */
+    int            n_secoes, cap_secoes;
     Pista_Dif      dif[INSTR_N][DIF_N];
 } ArquivoChart;
 
@@ -90,6 +101,7 @@ bool   ChartFile_add_tempo(ArquivoChart *a, uint32_t tick, double bpm);
 bool   ChartFile_add_compasso(ArquivoChart *a, uint32_t tick, int num, int den);
 bool   ChartFile_add_nota(Pista_Dif *d, uint32_t tick, uint32_t duracao, int traste);
 bool   ChartFile_add_frase(Pista_Dif *d, uint32_t tick, uint32_t duracao);
+bool   ChartFile_add_secao(ArquivoChart *a, uint32_t tick, const char *nome, size_t n);   /* "section Verso 1", "prc_verse_1" */
 bool   ChartFile_finish(ArquivoChart *a, char *erro, size_t n_erro);
 void   ChartFile_free(ArquivoChart *a);
 double ChartFile_tempo(const ArquivoChart *a, uint32_t tick);   /* segundos, sem o offset */

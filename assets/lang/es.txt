@@ -194,3 +194,22 @@ sem teclas = sin teclas
 teclas repetidas = teclas repetidas
 Ajuste as teclas em Controles = Configura las teclas en Controles
 [↑/↓] tecla  [%s] escreve  [%s] apaga = [↑/↓] tecla  [%s] escribe  [%s] borra
+
+# modo prática
+Prática = Práctica
+Começo (A) = Inicio (A)
+Fim (B) = Fin (B)
+Velocidade da música = Velocidad de la canción
+Começar = Comenzar
+Marcar o começo aqui = Marcar el inicio aquí
+Marcar o fim aqui = Marcar el fin aquí
+Escolher o trecho = Elegir el tramo
+Recomeçar o trecho = Reiniciar el tramo
+Compasso %d = Compás %d
+Começo do trecho marcado = Inicio del tramo marcado
+O fim precisa vir depois do começo = El fin debe venir después del inicio
+Trecho marcado: repetindo = Tramo marcado: repitiendo
+%s a %s: %d nota(s) de %s %s = %s a %s: %d nota(s) de %s %s
+a velocidade menor deixa o som mais grave = menos velocidad también baja el tono
+PRÁTICA %d%%  %s → %s  volta %d (última: %d%%) = PRÁCTICA %d%%  %s → %s  vuelta %d (última: %d%%)
+PRÁTICA %d%%  %s → %s  volta %d = PRÁCTICA %d%%  %s → %s  vuelta %d

@@ -1,8 +1,19 @@
-Ark Hero - fonte
+Ark Hero - font / fonte
+
+terminal16unicode.ttf: "Terminal 16 Unicode", by artdzyk.
+Source: https://www.dafont.com/terminal-16-unicode.font
+(original download: terminal_16_unicode.zip, "terminal 16 unicode.ttf").
+License shown on dafont: "100% Free".
+The author's note on that page: "A Unicode version of 12x16 Terminal font
+from MS-DOS."
+The font file itself carries no license text in its metadata.
+
+---
 
 terminal16unicode.ttf: "Terminal 16 Unicode", de artdzyk.
 Baixada de https://www.dafont.com/pt/terminal-16-unicode.font
 (arquivo original: terminal_16_unicode.zip, "terminal 16 unicode.ttf").
 Licença indicada no dafont: "100% Grátis" (100% Free).
-Nota do autor na página: "A Unicode version of 12x16 Terminal font from MS-DOS."
+Nota do autor na página: "A Unicode version of 12x16 Terminal font from
+MS-DOS."
 O arquivo da fonte não traz texto de licença nos metadados.

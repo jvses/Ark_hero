@@ -3,7 +3,7 @@
   <game>
     <path>./Ark Hero.sh</path>
     <name>Ark Hero</name>
-    <desc>A guitar rhythm game that plays the songs made by the Clone Hero community. Up to 4 players on the built-in controls, USB controllers, USB guitars or a keyboard, in controller mode or guitar mode, with star power, whammy, sustains and HOPOs.</desc>
+    <desc>A guitar rhythm game that plays the songs made by the Clone Hero community. Up to 4 players on the built-in controls, USB controllers, USB guitars or a keyboard, in controller mode or guitar mode, with star power, whammy, sustains and HOPOs. Practice mode loops a section at 50 to 100% speed.</desc>
     <releasedate>20261030T000000</releasedate>
     <developer>jvses</developer>
     <publisher>jvses</publisher>

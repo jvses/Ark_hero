@@ -132,6 +132,18 @@ void Chart_reset(Chart *c)
     }
 }
 
+/* As linhas de batida ficam todas (a pista anda antes e depois do trecho);
+   o resto das notas sai do vetor, e o fim passa a ser o do trecho. */
+void Chart_recorta(Chart *c, double de, double ate)
+{
+    int n = 0;
+    for (int i = 0; i < c->n; i++)
+        if (c->notas[i].t >= de && c->notas[i].t < ate) c->notas[n++] = c->notas[i];
+    c->n = n;
+    calcula_fim(c);
+    if (n == 0) c->fim = de;
+}
+
 void Chart_free(Chart *c)
 {
     free(c->notas);

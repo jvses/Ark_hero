@@ -29,9 +29,9 @@ typedef struct {
     char             driver[32];
 
     const Pcm *pcm;        /* o que está tocando (o Audio não é dono) */
-    Sint64     enviados;   /* frames já colocados no stream, contando o silêncio inicial */
-    Sint64     silencio;   /* frames de silêncio antes da música (t negativo) */
+    Sint64     pos;        /* frame da música que vai para o stream agora (negativo = o silêncio antes dela) */
     bool       pausado;
+    double     ritmo;      /* velocidade: 1 = normal, 0.5 = metade (e uma oitava abaixo, como uma fita) */
 
     /* relógio suavizado */
     double     t_suave;
@@ -45,9 +45,11 @@ bool   Audio_init(Audio *a);          /* falhar não impede o jogo: ele roda sem
 void   Audio_quit(Audio *a);
 bool   Audio_ok(const Audio *a);
 
-void   Audio_play(Audio *a, const Pcm *pcm, double atraso_s);   /* do começo; atraso = silêncio antes */
+void   Audio_play(Audio *a, const Pcm *pcm, double inicio);   /* a partir de inicio (s); negativo = silêncio antes */
+void   Audio_seek(Audio *a, double t);                        /* pula para t (s) da música que está tocando */
 void   Audio_stop(Audio *a);
 void   Audio_pause(Audio *a, bool pausar);
+void   Audio_set_speed(Audio *a, double ritmo);               /* 1 = normal; o relógio acompanha */
 void   Audio_update(Audio *a);         /* alimenta o dispositivo: uma vez por frame */
 void   Audio_set_volume(Audio *a, float volume);   /* 0..1 */
 bool   Audio_playing(const Audio *a);  /* tocando ou pausado */

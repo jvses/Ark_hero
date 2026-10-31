@@ -57,6 +57,11 @@ static void jogar(Game *g)
     espera(g, 1.3);
 }
 
+static bool perto(double a, double b)
+{
+    return fabs(a - b) < 1e-9;
+}
+
 #define VERDE    ACAO_BIT(ACAO_VERDE)
 #define VERMELHO ACAO_BIT(ACAO_VERMELHO)
 #define AMARELO  ACAO_BIT(ACAO_AMARELO)
@@ -125,6 +130,7 @@ static void teste_aviso_some(void)
 {
     Game g;
     Game_init(&g);
+    aperta(&g, ACAO_BAIXO);                   /* Prática */
     aperta(&g, ACAO_BAIXO);                   /* Configurações */
     aperta(&g, ACAO_CONFIRMA);
     aperta(&g, ACAO_CONFIRMA);                /* Controles */
@@ -141,6 +147,7 @@ static void teste_opcoes_e_voltar(void)
 {
     Game g;
     Game_init(&g);
+    aperta(&g, ACAO_BAIXO);                   /* Prática */
     aperta(&g, ACAO_BAIXO);                   /* Configuracoes */
     aperta(&g, ACAO_CONFIRMA);
     CONFERE(g.tela == TELA_CONFIG);
@@ -160,7 +167,7 @@ static void teste_opcoes_e_voltar(void)
 
     aperta(&g, ACAO_VOLTA);
     CONFERE(g.tela == TELA_INICIO);
-    CONFERE(Game_menu_sel(&g) == 1);          /* voltou para onde estava */
+    CONFERE(Game_menu_sel(&g) == 2);          /* voltou para onde estava */
     Game_quit(&g);
 }
 
@@ -170,6 +177,7 @@ static void teste_modo_de_escolha(void)
     Game g;
     Game_init(&g);
     Game_add_language(&g, "en", "English");
+    aperta(&g, ACAO_BAIXO);
     aperta(&g, ACAO_BAIXO);
     aperta(&g, ACAO_CONFIRMA);                /* Configurações */
     aperta(&g, ACAO_BAIXO);                   /* Velocidade da pista */
@@ -205,6 +213,7 @@ static void teste_pedido_de_remapear(void)
 {
     Game g;
     Game_init(&g);
+    aperta(&g, ACAO_BAIXO);
     aperta(&g, ACAO_BAIXO);
     aperta(&g, ACAO_CONFIRMA);                /* Configuracoes */
     aperta(&g, ACAO_CONFIRMA);                /* Controles */
@@ -446,6 +455,50 @@ static void teste_relogio_externo(void)
     Game_quit(&g);
 }
 
+/* Despausar volta 2 s. Até chegar onde parou: tocar junto não pune, o que
+   já foi acertado continua acertado e o sustain segurado espera. */
+static void teste_despausar_volta(void)
+{
+    const Nota notas[] = {
+        { .t = 1.0, .mascara = 1 },
+        { .t = 2.0, .mascara = 2, .duracao = 2.0 },   /* sustain vermelho até 4,0 s */
+        { .t = 6.0, .mascara = 4 },
+    };
+    Game g;
+    partida(&g, notas, 3);
+    ate(&g, 1.0, 0);
+    frame(&g, 0, VERDE);
+    ate(&g, 2.0, 0);
+    frame(&g, 0, VERMELHO);
+    ate(&g, 3.0, VERMELHO);
+    CONFERE(g.jog[0].chart.notas[1].segurando);
+
+    aperta(&g, ACAO_PAUSA);
+    const double parou = g.t;
+    const int salto = g.salto;
+    aperta(&g, ACAO_PAUSA);                   /* continua */
+    CONFERE(!g.pausado && perto(g.t, parou - GAME_REVOLTA) && g.salto == salto + 1);
+    CONFERE(perto(g.salto_t, g.t));           /* sem ajuste de tempo, o áudio vai para o mesmo ponto */
+    CONFERE(perto(g.livre_ate, parou));
+
+    frame(&g, 0, AMARELO);                    /* tocando junto, sem nota: não pune */
+    CONFERE(g.jog[0].combo == 2 && g.jog[0].toques_errados == 0 && g.jog[0].acertos == 2);
+    ate(&g, parou - 0.1, 0);                  /* soltou o vermelho antes de chegar onde parou: nada muda */
+    CONFERE(g.jog[0].chart.notas[1].segurando);
+    const double pontos = g.jog[0].pontos;
+    ate(&g, 3.5, VERMELHO);                   /* passou do ponto segurando: o sustain segue */
+    CONFERE(g.jog[0].chart.notas[1].segurando && g.jog[0].pontos > pontos);
+    frame(&g, VERMELHO, AMARELO);             /* agora sim, sem nota pune */
+    CONFERE(g.jog[0].combo == 0 && g.jog[0].toques_errados == 1);
+
+    Game_play(&g);                            /* pausar logo no começo: não volta antes dele */
+    frame(&g, 0, 0);
+    aperta(&g, ACAO_PAUSA);
+    aperta(&g, ACAO_PAUSA);
+    CONFERE(perto(g.t, g.inicio));
+    Game_quit(&g);
+}
+
 /* ===========================================================================
  * Parser de .chart
  * ========================================================================= */
@@ -464,11 +517,6 @@ static const char CHART[] =
     "  1168 = S 2 100\r\n  1200 = N 0 0\r\n  1200 = N 5 0\r\n"   /* frase 2 colada; HOPO forçado */
     "}\r\n"
     "[EasySingle]\r\n{\r\n  384 = N 0 0\r\n}\r\n";
-
-static bool perto(double a, double b)
-{
-    return fabs(a - b) < 1e-9;
-}
 
 static void teste_parser(void)
 {
@@ -508,6 +556,25 @@ static void teste_parser(void)
     ChartFile_free(&a);
 
     CONFERE(!ChartFile_parse(&a, "[Song]\n{\n}\n", 12, erro, sizeof(erro)));   /* sem notas */
+}
+
+/* as seções do [Events]; sem nenhuma, uma a cada 8 compassos */
+static void teste_secoes(void)
+{
+    ArquivoChart a;
+    char erro[64];
+    CONFERE(ChartFile_parse(&a, CHART, sizeof(CHART) - 1, erro, sizeof(erro)));
+    CONFERE(a.n_secoes == 1 && strcmp(a.secoes[0].nome, "Intro") == 0);
+    ChartFile_free(&a);
+
+    static const char SEM[] =
+        "[Song]\n{\n  Resolution = 192\n}\n[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+        "[ExpertSingle]\n{\n  384 = N 0 0\n  6912 = N 1 0\n}\n";   /* a última nota no compasso 10 */
+    CONFERE(ChartFile_parse(&a, SEM, sizeof(SEM) - 1, erro, sizeof(erro)));
+    CONFERE(a.n_secoes == 2 && a.secoes[0].nome[0] == '\0');
+    CONFERE(a.secoes[0].compasso == 1 && a.secoes[1].compasso == 9);
+    CONFERE(perto(a.secoes[1].t, 16.0));     /* 8 compassos de 2 s */
+    ChartFile_free(&a);
 }
 
 static void teste_aberta_e_frases(void)
@@ -863,6 +930,14 @@ static void m_nota(Midi *m, uint32_t ini, uint32_t fim, unsigned nota)
     m_evento(m, fim, 0x80, nota, 0);
 }
 
+static void m_texto(Midi *m, uint32_t tick, const char *texto)   /* meta-evento de texto */
+{
+    m_vlq(m, tick - m->ultimo);
+    m->ultimo = tick;
+    m_byte(m, 0xFF); m_byte(m, 0x01); m_byte(m, (unsigned)strlen(texto));
+    memcpy(m->b + m->n, texto, strlen(texto)); m->n += strlen(texto);
+}
+
 static void m_trilha(Midi *arq, const Midi *t)
 {
     memcpy(arq->b + arq->n, "MTrk", 4); arq->n += 4;
@@ -909,13 +984,22 @@ static void teste_midi(void)
     m_nota(&t2, 480, 500, 96);
     m_nota(&t2, 960, 980, 100);
 
+    /* trilha 3: as partes da música, nos dois jeitos de escrever (RB antigo e RB3) */
+    Midi t3 = {0};
+    m_vlq(&t3, 0); m_byte(&t3, 0xFF); m_byte(&t3, 0x03); m_byte(&t3, 6);
+    memcpy(t3.b + t3.n, "EVENTS", 6); t3.n += 6;
+    m_texto(&t3, 0, "[music_start]");          /* outro evento: ignorado */
+    m_texto(&t3, 0, "[section intro]");
+    m_texto(&t3, 1920, "[prc_verse_1]");
+
     Midi arq = {0};
     memcpy(arq.b, "MThd", 4); arq.n = 4;
-    const unsigned char cab[] = { 0, 0, 0, 6, 0, 1, 0, 3, 0x01, 0xE0 };
+    const unsigned char cab[] = { 0, 0, 0, 6, 0, 1, 0, 4, 0x01, 0xE0 };
     memcpy(arq.b + arq.n, cab, sizeof(cab)); arq.n += sizeof(cab);
     m_trilha(&arq, &t0);
     m_trilha(&arq, &t1);
     m_trilha(&arq, &t2);
+    m_trilha(&arq, &t3);
 
     ArquivoChart a;
     char erro[64];
@@ -939,9 +1023,102 @@ static void teste_midi(void)
     CONFERE(Chart_from_file(&c, &a, INSTR_BAIXO, DIF_EXPERT, 0.0));
     CONFERE(c.n == 2 && perto(c.notas[0].t, 0.5) && c.notas[1].mascara == 16);   /* laranja em 1,0 s */
     Chart_free(&c);
+
+    CONFERE(a.n_secoes == 2);
+    CONFERE(strcmp(a.secoes[0].nome, "Intro") == 0 && perto(a.secoes[0].t, 0.0));
+    CONFERE(strcmp(a.secoes[1].nome, "Verse 1") == 0 && perto(a.secoes[1].t, 2.5));   /* depois da troca para 60 BPM */
     ChartFile_free(&a);
 
     CONFERE(!ChartFile_parse_mid(&a, arq.b, 30, 116, erro, sizeof(erro)));   /* cortado no meio */
+}
+
+/* ===========================================================================
+ * Modo prática
+ * ========================================================================= */
+
+/* 120 BPM em 4/4: um compasso = 768 ticks = 2 s. Três partes. */
+static const char CHART_PRATICA[] =
+    "[Song]\n{\n  Resolution = 192\n}\n"
+    "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+    "[Events]\n{\n  0 = E \"section Intro\"\n  1536 = E \"section Verso\"\n  3072 = E \"section Refrão\"\n}\n"
+    "[ExpertSingle]\n{\n  384 = N 0 0\n  768 = N 0 0\n  1920 = N 0 0\n  2304 = N 1 0\n  3456 = N 0 0\n  3840 = N 0 0\n}\n";
+
+static void teste_pratica(void)
+{
+    Game g;
+    Game_init(&g);
+    const SongIni ini = { .nome = "Musica Teste", .artista = "Banda" };
+    Game_add_song(&g, &ini, "pasta", "");
+    Game_songs_done(&g);
+
+    aperta(&g, ACAO_BAIXO);                   /* Prática */
+    aperta(&g, ACAO_CONFIRMA);
+    aperta(&g, ACAO_CONFIRMA);                /* pronto */
+    espera(&g, 1.3);
+    CONFERE(g.tela == TELA_MUSICAS && g.pratica.ligada);
+    aperta(&g, ACAO_BAIXO);
+    aperta(&g, ACAO_BAIXO);
+    aperta(&g, ACAO_CONFIRMA);
+    CONFERE(Game_open_chart(&g, CHART_PRATICA, sizeof(CHART_PRATICA) - 1));
+    aperta(&g, ACAO_CONFIRMA);                /* pronto: vai para a tela da prática, e o áudio já carrega */
+    CONFERE(g.tela == TELA_PRATICA && g.pedido == PEDIDO_CARREGAR_MUSICA);
+    CONFERE(g.pratica.a == 0 && g.pratica.b == 2 && perto(g.pratica.ta, 0.0) && perto(g.pratica.tb, 11.0));
+
+    aperta(&g, ACAO_DIREITA);                 /* começo: Verso */
+    CONFERE(g.pratica.a == 1 && perto(g.pratica.ta, 4.0));
+    aperta(&g, ACAO_BAIXO);
+    aperta(&g, ACAO_ESQUERDA);                /* fim: o do Verso */
+    CONFERE(g.pratica.b == 1 && perto(g.pratica.tb, 8.0));
+    aperta(&g, ACAO_ESQUERDA);                /* fim antes do começo: o começo vem junto */
+    CONFERE(g.pratica.a == 0 && g.pratica.b == 0);
+    aperta(&g, ACAO_DIREITA);
+    aperta(&g, ACAO_CIMA);
+    aperta(&g, ACAO_DIREITA);                 /* de novo: Verso a Verso */
+    CONFERE(g.pratica.a == 1 && g.pratica.b == 1);
+    aperta(&g, ACAO_BAIXO);
+    aperta(&g, ACAO_BAIXO);                   /* velocidade */
+    for (int i = 0; i < 20; i++) aperta(&g, ACAO_ESQUERDA);
+    CONFERE(g.pratica.ritmo == GAME_RITMO_MIN && Game_ritmo(&g) == 0.5);
+    aperta(&g, ACAO_BAIXO);
+    aperta(&g, ACAO_CONFIRMA);                /* Começar */
+    CONFERE(g.tela == TELA_CARREGANDO && g.pedido == PEDIDO_CARREGAR_MUSICA);
+    Game_audio_ready(&g, true, 12.0);
+    CONFERE(g.tela == TELA_JOGO);
+
+    /* só as notas do Verso (5 s e 6 s), começando 2 s de relógio (1 s de música) antes */
+    CONFERE(g.jog[0].chart.n == 2 && perto(g.t, 3.0) && perto(g.livre_ate, 4.0));
+    espera(&g, 1.0);
+    CONFERE(fabs(g.t - 3.5) < 0.01);         /* metade da velocidade */
+    ate(&g, 5.0, 0);
+    frame(&g, 0, VERDE);
+    CONFERE(g.jog[0].acertos == 1);
+    ate(&g, 8.0, 0);                          /* o vermelho de 6 s passou */
+    CONFERE(g.jog[0].erros == 1 && g.pratica.voltas == 0);
+    const int salto = g.salto;
+    while (g.pratica.voltas == 0 && g.t > 7.0) frame(&g, 0, 0);   /* acabou o trecho: de volta ao começo dele */
+    CONFERE(g.pratica.voltas == 1 && g.salto == salto + 1 && g.t < 4.0);
+    CONFERE(g.jog[0].volta_pct == 50 && g.jog[0].acertos == 0 && g.jog[0].chart.notas[0].estado == NOTA_PENDENTE);
+    CONFERE(!g.terminou && g.musicas[0].recorde == 0);   /* a prática não grava recorde */
+
+    /* na pausa: marcar o fim no meio do Verso fecha o trecho no compasso seguinte e recomeça */
+    ate(&g, 5.5, 0);
+    aperta(&g, ACAO_PAUSA);
+    for (int i = 0; i < 3; i++) aperta(&g, ACAO_BAIXO);   /* "Marcar o fim aqui" */
+    const int partida = g.partida;
+    aperta(&g, ACAO_CONFIRMA);
+    CONFERE(!g.pausado && g.partida == partida + 1 && perto(g.pratica.tb, 6.0) && g.pratica.b == -1);
+    CONFERE(g.jog[0].chart.n == 1 && perto(g.t, 3.0));
+
+    aperta(&g, ACAO_PAUSA);
+    aperta(&g, ACAO_BAIXO);                   /* velocidade, na pausa */
+    aperta(&g, ACAO_DIREITA);
+    CONFERE(g.pratica.ritmo == GAME_RITMO_MIN + GAME_RITMO_PASSO);
+    for (int i = 0; i < 3; i++) aperta(&g, ACAO_BAIXO);   /* "Escolher o trecho" */
+    aperta(&g, ACAO_CONFIRMA);
+    CONFERE(g.tela == TELA_PRATICA && g.jog[0].chart.n == 6);   /* a música inteira de novo */
+    aperta(&g, ACAO_VOLTA);
+    CONFERE(g.tela == TELA_PREPARAR);
+    Game_quit(&g);
 }
 
 /* ===========================================================================
@@ -1568,9 +1745,11 @@ int main(void)
     teste_frase_com_erro_nao_conta();
     teste_fim_da_musica();
     teste_relogio_externo();
+    teste_despausar_volta();
 
     teste_song_ini();
     teste_parser();
+    teste_secoes();
     teste_aberta_e_frases();
     teste_escolher_musica();
     teste_modo_precisao();
@@ -1584,6 +1763,7 @@ int main(void)
     teste_acorde_com_sustain();
     teste_ajuste_de_tempo();
     teste_midi();
+    teste_pratica();
 
     teste_multijogador();
     teste_preparar_sem_os_outros();

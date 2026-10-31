@@ -64,6 +64,7 @@ typedef struct {
     /* som */
     OQueToca   tocando;
     int        partida_tocando;   /* g->partida que está tocando (para saber quando recomeçar) */
+    int        salto_feito;       /* o último g->salto que o áudio já acompanhou */
     Pcm        cliques;           /* metrônomo, para a demonstração (ou se o áudio falhar) */
     Pcm        som_erro[INSTR_N]; /* o "engasgo" de cada instrumento */
     Carregador carga;             /* decodifica uma música numa thread */
@@ -492,20 +493,21 @@ static void gera_cliques(App *app)
 }
 
 /* começo da partida: a música, se ela foi decodificada; senão, o metrônomo.
- * O silêncio antes (-g->inicio) é o tempo de preparação: a pista já anda. */
+ * Começa em g->inicio: negativo é o silêncio de preparação (a pista já
+ * anda); na prática, um pouco antes do trecho. */
 static void comeca_som_partida(App *app)
 {
     const Game *g = &app->game;
     Audio_stop(&app->audio);
-    const double preparacao = -g->inicio;
     if (g->musica >= 0 && g->musica == app->pcm_indice && g->duracao_audio > 0.0) {
-        Audio_play(&app->audio, &app->pcm, preparacao);
+        Audio_play(&app->audio, &app->pcm, g->inicio);
     } else {
         gera_cliques(app);
-        Audio_play(&app->audio, &app->cliques, preparacao);
+        Audio_play(&app->audio, &app->cliques, g->inicio);
     }
     app->tocando         = SOM_PARTIDA;
     app->partida_tocando = g->partida;
+    app->salto_feito     = g->salto;
 }
 
 /* a carga em andamento terminou? */
@@ -538,8 +540,13 @@ static void sincroniza_som(App *app)
     confere_carga(app);
 
     const bool na_partida = g->tela == TELA_JOGO && !g->terminou;
+    Audio_set_speed(&app->audio, na_partida ? Game_ritmo(g) : 1.0);
     if (na_partida) {
         if (app->tocando != SOM_PARTIDA || app->partida_tocando != g->partida) comeca_som_partida(app);
+        if (app->salto_feito != g->salto) {   /* despausou (a música volta um pouco) ou o trecho recomeçou */
+            Audio_seek(&app->audio, g->salto_t);
+            app->salto_feito = g->salto;
+        }
         Audio_pause(&app->audio, g->pausado);
     } else if (app->tocando == SOM_PARTIDA) {
         para_som(app);
@@ -578,9 +585,11 @@ static void atende_pedido(App *app)
     case PEDIDO_SAIR:                app->sair = true;                                        break;
     case PEDIDO_ABRIR_MUSICA:        abre_musica(app, i);                                     break;
 
-    case PEDIDO_CARREGAR_MUSICA:
-        if (app->pcm_indice == i) Game_audio_ready(&app->game, true, (double)app->pcm.frames / AUDIO_TAXA);
-        else                      comeca_carga(app, i);   /* já decodificada: não decodifica de novo */
+    case PEDIDO_CARREGAR_MUSICA:   /* já decodificada, ou decodificando (a prática pede antes): não recomeça */
+        if (app->pcm_indice == i)
+            Game_audio_ready(&app->game, true, (double)app->pcm.frames / AUDIO_TAXA);
+        else if (Carregador_state(&app->carga) != CARGA_ANDANDO || app->carga_indice != i)
+            comeca_carga(app, i);
         break;
 
     case PEDIDO_CANCELAR_CARGA:
@@ -685,6 +694,9 @@ static void log_inicio(App *app)
     }
     SDL_Log("[partida] penalidade %s | ajuste de tempo %+d ms | som de erro %s", g->opcoes.penalidade ? "sim" : "nao",
             g->opcoes.ajuste_ms, g->opcoes.som_erro ? "sim" : "nao");
+    if (Game_praticando(g))
+        SDL_Log("[partida] pratica: trecho de %.1f s a %.1f s, velocidade %d%%", g->pratica.ta, g->pratica.tb,
+                g->pratica.ritmo);
     app->logando        = true;
     app->partida_logada = g->partida;
     app->frames_lentos  = 0;
@@ -694,8 +706,8 @@ static void log_inicio(App *app)
 static void log_fim(App *app, const char *como)
 {
     const Game *g = &app->game;
-    SDL_Log("[partida] %s em %.1f s | pausas %d | frames lentos %d | saltos do relogio %d | som de erro %s, %d vez(es)",
-            como, g->t, g->pausas, app->frames_lentos, app->audio.saltos,
+    SDL_Log("[partida] %s em %.1f s | pausas %d | voltas %d | frames lentos %d | saltos do relogio %d | som de erro %s, %d vez(es)",
+            como, g->t, g->pausas, g->pratica.voltas, app->frames_lentos, app->audio.saltos,
             g->opcoes.som_erro ? (app->audio.efeito ? "ligado" : "ligado, mas sem dispositivo") : "desligado",
             app->sons_erro);
     for (int k = 0; k < GAME_MAX_JOGADORES; k++) {

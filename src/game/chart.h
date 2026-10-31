@@ -53,6 +53,7 @@ typedef struct {
 bool Chart_demo(Chart *c);                                  /* a música de demonstração */
 bool Chart_from_notes(Chart *c, const Nota *notas, int n);  /* cópia (usado nos testes) */
 void Chart_reset(Chart *c);                                 /* todas as notas pendentes de novo */
+void Chart_recorta(Chart *c, double de, double ate);        /* só as notas de "de" até antes de "ate" (modo prática) */
 void Chart_free(Chart *c);
 
 #endif

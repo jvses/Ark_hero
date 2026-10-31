@@ -1,0 +1,58 @@
+Ark Hero - background photos / fotos de fundo
+
+The three backgrounds are photos published for free use. They are not under
+the GPL like the game's code: each one keeps the license of the site where
+it was published. They were converted to PNG for the game.
+
+vaporwave_guitar1.png (main menu, song list, players)
+  "Electric guitar and amplifier in dim purple lighting"
+  Photo by Denis Feofilaktov (@dfeofilaktov) on Unsplash
+  https://unsplash.com/pt-br/fotografias/guitarra-eletrica-e-amplificador-em-iluminacao-roxa-fraca-6pZwlZ0ff6s
+  License: Unsplash License, https://unsplash.com/license
+
+vaporwave_guitar2.png (the highway)
+  "Purple and black electric guitar"
+  Photo by Xie lipton (@sanarara) on Unsplash
+  https://unsplash.com/pt-br/fotografias/guitarra-eletrica-roxa-e-preta-SjrgIBKSLW0
+  License: Unsplash License, https://unsplash.com/license
+
+vaporwave_guitar3.png (settings)
+  Close-up of a drum kit on stage, in blue and red light
+  Photo by ANTONI SHKRABA production on Pexels
+  https://www.pexels.com/pt-br/foto/bateria-percussao-tambores-instrumento-de-percussao-8041089/
+  License: Pexels License, https://www.pexels.com/license/
+
+Both licenses allow using, copying, modifying and distributing the photos
+for free, commercial use included, without asking. They don't allow selling
+unaltered copies of the photos or redistributing them on other photo or
+wallpaper sites. Credit is not required; it is given here anyway.
+
+---
+
+As três imagens de fundo são fotos publicadas para uso livre. Elas não
+estão sob a GPL como o código do jogo: cada uma segue a licença do site onde
+foi publicada. Foram convertidas para PNG para o jogo.
+
+vaporwave_guitar1.png (menu inicial, lista de músicas, jogadores)
+  "Guitarra elétrica e amplificador em iluminação roxa fraca"
+  Foto de Denis Feofilaktov (@dfeofilaktov), no Unsplash
+  https://unsplash.com/pt-br/fotografias/guitarra-eletrica-e-amplificador-em-iluminacao-roxa-fraca-6pZwlZ0ff6s
+  Licença: Licença Unsplash, https://unsplash.com/license
+
+vaporwave_guitar2.png (a pista)
+  "Guitarra elétrica roxa e preta"
+  Foto de Xie lipton (@sanarara), no Unsplash
+  https://unsplash.com/pt-br/fotografias/guitarra-eletrica-roxa-e-preta-SjrgIBKSLW0
+  Licença: Licença Unsplash, https://unsplash.com/license
+
+vaporwave_guitar3.png (configurações)
+  Bateria em close-up no palco, com luz azul e vermelha
+  Foto de ANTONI SHKRABA production, no Pexels
+  https://www.pexels.com/pt-br/foto/bateria-percussao-tambores-instrumento-de-percussao-8041089/
+  Licença: Licença Pexels, https://www.pexels.com/license/
+
+As duas licenças permitem usar, copiar, modificar e distribuir as fotos de
+graça, inclusive para uso comercial, sem pedir permissão. Não permitem
+vender cópias sem alteração das fotos nem redistribuí-las em outros sites de
+fotos ou papéis de parede. O crédito não é obrigatório; fica aqui mesmo
+assim.

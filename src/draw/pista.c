@@ -205,6 +205,16 @@ static void cauda(SDL_Renderer *ren, const Pista *p, const Game *g, const Jogado
     SDL_RenderGeometry(ren, NULL, v, 2 * (CAUDA_TIRAS + 1), idx, 6 * CAUDA_TIRAS);
 }
 
+/* Voltando da pausa, a pista mostra de novo o que já tinha sido tocado, como
+   um "fantasma" para tocar junto: as notas acertadas, apagadas, até o ponto
+   em que o jogo tinha parado. */
+#define FANTASMA 0.35f
+
+static bool fantasma(const Game *g, const Nota *n)
+{
+    return n->estado == NOTA_ACERTADA && g->t < g->livre_ate && n->t > g->t - 0.05;
+}
+
 static void caudas(SDL_Renderer *ren, const Pista *p, const Game *g, const Jogador *j, int ultima)
 {
     for (int i = j->primeira_visivel; i <= ultima; i++) {
@@ -223,8 +233,13 @@ static void caudas(SDL_Renderer *ren, const Pista *p, const Game *g, const Jogad
                 cauda(ren, p, g, j, u, n->t, fim, cor_alfa(c, 0.75f), false);
             } else if (n->estado == NOTA_PERDIDA) {
                 cauda(ren, p, g, j, u, n->t, fim, cor_alfa(COR_APAGADA, 0.5f), false);
+            } else if (n->segurando && n->t > g->t) {   /* voltando da pausa: o sustain ainda vem aí */
+                cauda(ren, p, g, j, u, n->t, fim, cor_mistura(c, COR_TEXTO, 0.35f), false);
             } else if (n->segurando) {
                 cauda(ren, p, g, j, u, g->t, fim, cor_mistura(c, COR_TEXTO, 0.35f), true);
+            } else if (fantasma(g, n)) {
+                cauda(ren, p, g, j, u, n->t, n->solto, cor_alfa(c, FANTASMA), false);
+                if (n->solto < fim) cauda(ren, p, g, j, u, n->solto, fim, cor_alfa(COR_APAGADA, 0.5f), false);
             } else if (n->solto < fim) {   /* soltou antes do fim: o resto passa apagado */
                 cauda(ren, p, g, j, u, n->solto, fim, cor_alfa(COR_APAGADA, 0.5f), false);
             }
@@ -246,7 +261,8 @@ static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color 
     const float f = escala(p, z);
     const float w = NOTA_LARG * largura_faixa(p) * f;
     const float h = w * 0.42f;   /* achatada: estamos olhando a pista de cima */
-    const float a = some_no_topo(z);
+    const float a = some_no_topo(z) * cor.a / 255.0f;   /* o alfa da cor vale para a nota toda */
+    cor.a = 255;
     const SDL_FPoint c = ponto(p, u, z);
 
     elipse(ren, c.x, c.y + h * 0.12f, w + 4.0f * f, h + 4.0f * f, cor_alfa((SDL_Color){ 0, 0, 0, 200 }, a));
@@ -268,7 +284,8 @@ static void nota(SDL_Renderer *ren, const Pista *p, float u, float z, SDL_Color 
 static void nota_aberta(SDL_Renderer *ren, const Pista *p, float z, SDL_Color cor, bool star)
 {
     const float f = escala(p, z);
-    const float a = some_no_topo(z);
+    const float a = some_no_topo(z) * cor.a / 255.0f;
+    cor.a = 255;
     const SDL_FPoint e = ponto(p, 0.06f, z), d = ponto(p, 0.94f, z);
     const float h = 12.0f * f * p->s;
     const SDL_FRect r = { e.x, e.y - h / 2, d.x - e.x, h };
@@ -283,20 +300,22 @@ static void notas(SDL_Renderer *ren, const Pista *p, const Game *g, const Jogado
     /* da mais longe para a mais perto: a de perto fica por cima */
     for (int i = ultima; i >= j->primeira_visivel; i--) {
         const Nota *n = &j->chart.notas[i];
-        if (n->estado == NOTA_ACERTADA) continue;   /* acertada some (vira explosão) */
+        const bool sombra = fantasma(g, n);
+        if (n->estado == NOTA_ACERTADA && !sombra) continue;   /* acertada some (vira explosão) */
         const float z = z_do_tempo(g, n->t);
         if (z < -0.08f || z > 1.0f) continue;
 
-        const bool perdida = n->estado == NOTA_PERDIDA;
+        const bool  perdida = n->estado == NOTA_PERDIDA;
+        const float alfa    = sombra ? FANTASMA : 1.0f;
         if (n->flags & NOTA_ABERTA) {
-            nota_aberta(ren, p, z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : COR_ABERTA,
-                        !perdida && (n->flags & NOTA_STAR));
+            nota_aberta(ren, p, z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : cor_alfa(COR_ABERTA, alfa),
+                        !perdida && !sombra && (n->flags & NOTA_STAR));
             continue;
         }
         for (int f = 0; f < ACAO_N_TRASTES; f++) {
             if (!(n->mascara & (1u << f))) continue;
-            nota(ren, p, u_da_faixa(g, f), z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : COR_TRASTE[f],
-                 !perdida && (n->flags & NOTA_STAR),
+            nota(ren, p, u_da_faixa(g, f), z, perdida ? cor_alfa(COR_APAGADA, 0.7f) : cor_alfa(COR_TRASTE[f], alfa),
+                 !perdida && !sombra && (n->flags & NOTA_STAR),
                  !(n->flags & (NOTA_HOPO | NOTA_TAP)));   /* palhetada? */
         }
     }
@@ -350,7 +369,7 @@ static void efeitos(SDL_Renderer *ren, const Pista *p, const Game *g, const Joga
 {
     uint8_t sustentando = 0;   /* faixas com sustain sendo segurado */
     for (int i = j->primeira_visivel; i <= ultima; i++)
-        if (j->chart.notas[i].segurando)
+        if (j->chart.notas[i].segurando && j->chart.notas[i].t <= g->t)
             sustentando |= (j->chart.notas[i].flags & NOTA_ABERTA) ? 0x04 : j->chart.notas[i].mascara;
 
     for (int f = 0; f < ACAO_N_TRASTES; f++) {

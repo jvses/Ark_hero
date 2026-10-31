@@ -22,8 +22,8 @@ a direção do João. Cada etapa é testada no R36S antes do commit.
 | 5c | A fonte do jogo, com acentos | feita, testada no PC |
 | 6 | Tela de jogadores, contas, modo guitarra | feita, testada no PC com guitarra |
 | 6b | Menus pela guitarra, jogadores presos ao aparelho, perfis por conta | feita, testada no PC (commit `1dca057`); falta o game stick |
-| 6c | Distribuição: pacote do PortMaster, build do Windows, release 0.1.0 | **feita; falta testar** |
-| 7 | Modo prática: seções, A-B, velocidade; despausar volta 2 s | planejada |
+| 6c | Distribuição: pacote do PortMaster, build do Windows, release 0.1.0 | feita; testada no PC e num Windows (commit `81ea5db`) |
+| 7 | Modo prática: seções, A-B, velocidade; despausar volta 2 s; licença GPL-3.0, créditos, manual | **feita; falta testar** |
 | depois | Lua (`config.lua`, `regras.lua`), calibração de áudio e vídeo, cache da biblioteca | |
 
 ---
@@ -1369,30 +1369,124 @@ screenshot 640x480, licenças planas).
 
 ---
 
-## Etapa 7 (planejada): modo prática
+## Etapa 7: modo prática, despausar volta 2 s, licença e manual (2026-10-30)
 
-Pedido: um modo sem como perder, com a velocidade da música ajustável
-durante a partida e a escolha de trechos com loop e pontos A-B.
+### Pedido (depois de um amigo testar a 6c num notebook com Windows)
 
-- **Seções**: os charts já trazem as seções ("section Intro", "Solo 1"...):
-  no `.chart`, em `[Events]`; no `.mid`, na trilha EVENTS. O leitor passa a
-  guardá-las (nome e tempo).
-- **Tela da prática**: escolher a seção inicial (A) e a final (B), ou uma
-  só; a velocidade (50% a 100%, de 5 em 5); e, durante a partida, botões
-  para mudar a velocidade e marcar A e B na hora.
-- **Loop**: chegando em B, volta para A (o áudio volta para a posição de A,
-  e as notas de A a B voltam a ficar pendentes), com uma contagem curta.
-- **Velocidade**: o jeito simples é tocar o áudio mais devagar
-  (`SDL_SetAudioStreamFrequencyRatio`), o que também deixa o som mais grave,
-  como uma fita. Manter o tom exige esticar o áudio no tempo (WSOLA), feito
-  na hora, enquanto toca, e com o relógio do jogo acompanhando a posição de
-  verdade na música. Proposta: começar pelo simples e trocar pelo esticado
-  se o som grave incomodar.
-- **Sem perder**: hoje já não existe "perder" (não há barra de rock); o modo
-  prática também não grava recorde.
-- **Despausar volta uns 2 s** (pedido de 2026-10-30, para lembrar nesta
-  etapa): ao sair da pausa, a música recua uns 2 segundos, com a contagem,
-  para o jogador se posicionar. Vale para a partida normal também.
+- O jogo rodou bem no Windows, no teclado e num controle de game stick. Os
+  controles sem fio que dividem um mesmo receptor USB tiveram problemas, como
+  o seu par de controles.
+- Licença: GPL-3.0 (liberdade de pegar o código e alterar, mantendo essa
+  liberdade para todos).
+- Na documentação, os links de onde vieram a fonte e as imagens, para
+  justificar que são gratuitas e dar crédito a quem as fez.
+- Documentação mais robusta antes do port final.
+- As mudanças combinadas: despausar volta uns 2 s da música, e o modo prática.
+- Depois disso, testes no PC, no R36S e no Y7.
+
+### O que foi feito
+
+**Despausar volta 2 s** (`game.c`): ao sair da pausa (Continuar, Start ou
+Voltar), a música volta 2 s, sem passar do começo, com uma contagem grande
+na pista ("2", "1"). Até a música chegar de novo onde parou:
+- apertar ou palhetar sem nota não pune (`judge.c`, `pune()`);
+- as notas já acertadas aparecem apagadas ("fantasmas"), para tocar junto
+  (`pista.c`); o que foi julgado continua julgado;
+- o sustain que estava segurado e o star power esperam: só voltam a contar
+  quando a música passa do ponto da pausa. Aí, se o traste estiver segurado,
+  o sustain segue;
+- se pausar de novo no meio da volta, o ponto continua o mais adiantado.
+
+O jogo pede o salto pelo estado, como já fazia com o começo da partida:
+`g->salto` muda e `g->salto_t` diz para onde; o `main.c` vê a mudança e leva
+o áudio junto (`Audio_seek`).
+
+**Seções** (`chartfile.c`, `midifile.c`): o `.chart` passa a ler o
+`[Events]` (`E "section Intro"`); o `.mid`, os textos `[section verse_1]` e
+`[prc_verse_1]` (RB antigo e RB3), viram "Verse 1". Sem nenhuma seção no
+arquivo, o jogo cria uma a cada 8 compassos ("Compasso 1", "Compasso 9"...).
+
+**Modo prática:**
+- **Prática**, no menu inicial: jogadores, música e preparação, como numa
+  partida; depois, a **tela da prática** (`TELA_PRATICA`): Começo (A), Fim
+  (B), Velocidade da música (50% a 100%, de 5 em 5) e Começar. Embaixo, o
+  tempo do trecho e quantas notas ele tem. O áudio já carrega enquanto o
+  jogador escolhe (o `main.c` não recomeça uma carga que já está andando);
+- a partida tem só as notas de A a B (`Chart_recorta`) e começa 2 s (de
+  relógio) antes de A, com a contagem e sem punir antes de A. Passado B (e as
+  notas do trecho), volta sozinha para A: as notas ficam pendentes de novo, e
+  a porcentagem da volta anterior aparece no alto, com a velocidade, o trecho
+  e o número da volta;
+- a pausa da prática tem: Continuar, Velocidade da música, Marcar o começo
+  aqui (vale da próxima volta em diante), Marcar o fim aqui (fecha o trecho no
+  fim do compasso e já recomeça), Escolher o trecho, Recomeçar o trecho e Sair
+  para o menu. As marcas caem nas linhas de compasso;
+- a velocidade é a da SDL (`SDL_SetAudioStreamFrequencyRatio`,
+  `Audio_set_speed`): a música fica mais lenta e mais grave, como uma fita. O
+  relógio conta em frames da música, então segue certo (o buffer do
+  dispositivo vale `buffer * ritmo`, e o relógio suave anda `ritmo` vezes o
+  relógio do sistema). O ajuste de tempo e o star power seguem a velocidade;
+- a prática não grava recorde;
+- o áudio passou a guardar a posição como o próximo frame da música
+  (`Audio.pos`, negativo = o silêncio antes), e o `Audio_play` recebe onde
+  começar (a prática começa no meio da música).
+
+**Licença e créditos:**
+- `LICENSE` na raiz: o texto oficial da GPL-3.0. Os pacotes já levam ele
+  como `licenses/LICENSE.arkhero.txt`;
+- `assets/images/CREDITOS.txt` (inglês e português): autor, link e licença de
+  cada foto de fundo (Denis Feofilaktov e Xie lipton no Unsplash, ANTONI
+  SHKRABA production no Pexels). Vai nos pacotes como
+  `licenses/LICENSE.images.txt`;
+- `assets/fonts/FONTE.txt` em inglês e português, com o link do dafont;
+- README: seção "Licença e créditos" (a GPL, a fonte e as fotos com os links,
+  e a tabela das bibliotecas com as licenças).
+
+**Documentação:**
+- `docs/MANUAL.md` e `docs/MANUAL.en.md`: instalação, músicas, a partida
+  passo a passo, os dois modos, a pausa, a prática, cada configuração,
+  contas e controles, onde ficam os arquivos e problemas comuns;
+- README, README do PortMaster, `port.json`, `gameinfo.xml`, README do
+  Windows e notas da release com a prática, a volta da pausa, a licença e os
+  créditos.
+
+**Traduções:** 17 textos novos em inglês e espanhol (184 cada).
+
+### Testes
+
+- 51 no `test_game` (novos: despausar volta, seções do `.chart` e do `.mid`,
+  e a prática de ponta a ponta: escolher A/B e velocidade, o loop, a
+  porcentagem da volta, marcar o fim na pausa, escolher o trecho de novo).
+  Passam no PC (também com ASan e UBSan), no aarch64 (docker arm64) e no
+  Windows (wine). Nenhum aviso de compilação no código do jogo.
+- O áudio de verdade (driver dummy da SDL, num programa de teste à parte):
+  depois de um salto o relógio cai no ponto pedido; a 50% anda 1 s de música
+  a cada 2 s de relógio, sem saltos do relógio suave.
+- O jogo abre sem tela, em inglês e espanhol, com todas as traduções aceitas.
+
+### Como testar
+
+- **Despausar:** no meio de uma música, pausar e continuar: a música volta
+  2 s, a contagem aparece, as notas já tocadas vêm apagadas, e tocar junto
+  não quebra o combo. Pausar segurando um sustain e, na volta, segurar o
+  traste antes de chegar ao ponto: o sustain segue.
+- **Prática:** Prática > música > preparação. Escolher A e B pelas seções e
+  a velocidade em 75%; ver o loop, a contagem e a porcentagem da volta. Na
+  pausa: mudar a velocidade; pausar no começo de um trecho e "Marcar o começo
+  aqui", continuar, pausar no fim e "Marcar o fim aqui". Uma música sem
+  seções (um `.chart` antigo) mostra "Compasso 1, 9, 17...".
+- **No R36S e no Y7:** o som na velocidade menor (estalos?), o tempo das
+  notas na prática (o ajuste de tempo continua certo?) e o FPS.
+- **No Windows:** o mesmo, mais a velocidade com o Direct3D.
+
+### Pendências
+
+- **Velocidade sem mudar o tom:** esticar o áudio no tempo (WSOLA) se o som
+  grave incomodar na prática.
+- **Controles sem fio num receptor só:** investigar com o log (o que a SDL
+  vê quando os dois estão ligados: nomes, ids, se viram um controle só).
+- **A tela da prática** ainda não mostra as seções na pista (uma marca com o
+  nome passando) nem a velocidade acima de 100%.
 
 ---
 
@@ -1425,9 +1519,7 @@ O que falta, em ordem:
 
 **Para fazer agora / decidir:**
 - **Ajuste de tempo no R36S:** colocar em +40 ms (pelo log).
-- **Licença do próprio Ark Hero:** o repositório não tem um arquivo de
-  licença; sem ele, legalmente ninguém pode usar o código. Escolher (MIT,
-  GPL...) antes de divulgar.
+- ~~**Licença do próprio Ark Hero**~~ (GPL-3.0, etapa 7).
 - **A branch `main`:** decidir se a `claudio` entra na `main` ou se a
   `main` fica como a sua versão de estudo.
 - **Documentos:** a linha "Estado" do README e a ARQUITETURA.md descrevem o
@@ -1440,8 +1532,8 @@ O que falta, em ordem:
 
 **Para a partida:**
 - estrelas por música; barra de rock (hoje não dá para perder); silenciar a
-  guitarra quando erra (o som de erro foi feito na etapa 5); modo treino por seção (as seções do
-  `[Events]` já estão nos arquivos).
+  guitarra quando erra (o som de erro foi feito na etapa 5); ~~modo treino
+  por seção~~ (etapa 7).
 
 **Distribuição:**
 - testar em outro firmware (ROCKNIX, EmuELEC, ArkOS clássico: ver a análise

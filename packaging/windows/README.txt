@@ -22,12 +22,20 @@ Controllers and USB guitars work too: map the frets once in Settings >
 Controls (or in the Controls line of your card on the Players screen). The
 mapping is saved with your account.
 
+PRACTICE: Practice, in the main menu, loops a section of the song at 50 to
+100% speed. When you resume from pause, the song rewinds 2 seconds.
+The full manual: https://github.com/jvses/Ark_hero (docs/MANUAL.en.md).
+
 Everything the game saves (options, accounts, records, controls) and the
 log.txt go to the conf\arkhero folder, next to arkhero.exe. If the game
 can't write there (installed in Program Files, for example), they go to
 %APPDATA%\arkhero.
 
 Requires Windows 10 or newer, 64 bits.
+
+Ark Hero is free software under the GPL-3.0 (licenses\LICENSE.arkhero.txt).
+The font and the background photos keep their own licenses; their authors
+and links are in the licenses folder.
 
 --------------------------------------------------------------------------
 
@@ -55,9 +63,17 @@ Controles e guitarras USB também funcionam: mapeie os trastes uma vez em
 Configurações > Controles (ou na linha Controles do seu cartão, na tela de
 jogadores). O mapeamento fica salvo na sua conta.
 
+PRÁTICA: Prática, no menu inicial, repete um trecho da música em loop, de
+50% a 100% da velocidade. Ao despausar, a música volta 2 segundos.
+O manual completo: https://github.com/jvses/Ark_hero (docs/MANUAL.md).
+
 Tudo o que o jogo salva (opções, contas, recordes, controles) e o log.txt
 ficam na pasta conf\arkhero, ao lado do arkhero.exe. Se o jogo não puder
 gravar ali (instalado em Arquivos de Programas, por exemplo), vão para
 %APPDATA%\arkhero.
 
 Precisa do Windows 10 ou mais novo, 64 bits.
+
+O Ark Hero é software livre, sob a GPL-3.0 (licenses\LICENSE.arkhero.txt).
+A fonte e as fotos de fundo seguem as licenças dos seus autores; os nomes e
+os links estão na pasta licenses.

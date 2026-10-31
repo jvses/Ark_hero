@@ -130,6 +130,13 @@ static uint32_t sustentando(const Game *g, const Jogador *j)
     return m;
 }
 
+/* Apertar sem nota pune? Só com a opção ligada, e não enquanto o jogador
+   ainda está voltando da pausa (ele toca junto o que já tinha tocado). */
+static bool pune(const Game *g)
+{
+    return g->opcoes.penalidade && g->t >= g->livre_ate;
+}
+
 /* apertou um botão sem nota nenhuma para ele */
 static void toque_errado(Game *g, Jogador *j)
 {
@@ -155,12 +162,12 @@ void Judge_toques(Game *g, Jogador *j, uint32_t apertados, uint32_t segurados)
         if (!(novos & (1u << f)) || (usados & (1u << f))) continue;
         const int i = nota_do_traste(g, j, f);
         if (i < 0) {                                    /* nenhuma nota para este botão */
-            if (g->opcoes.penalidade && !punido) { toque_errado(g, j); punido = true; }
+            if (pune(g) && !punido) { toque_errado(g, j); punido = true; }
             continue;
         }
         const Nota *n = &j->chart.notas[i];
         if (acorde(n) && (livres & ~n->mascara)) {      /* acorde com botão a mais: errou o acorde */
-            if (g->opcoes.penalidade && !punido) { toque_errado(g, j); punido = true; }
+            if (pune(g) && !punido) { toque_errado(g, j); punido = true; }
             usados |= novos;                            /* este frame não acerta mais nada */
             continue;
         }
@@ -257,7 +264,7 @@ static int nota_na_janela(const Game *g, const Jogador *j)
 
 static void erro_palhetada(Game *g, Jogador *j)
 {
-    if (g->opcoes.penalidade) toque_errado(g, j);
+    if (pune(g)) toque_errado(g, j);
 }
 
 void Judge_guitarra(Game *g, Jogador *j, uint32_t apertados, uint32_t segurados)

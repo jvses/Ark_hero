@@ -20,12 +20,21 @@ First public build. Ark Hero is a guitar rhythm game written in C with SDL3 that
 - Controller mode (press the frets on time) or guitar mode (hold the frets and strum), chosen per player.
 - Player accounts: each account keeps its own button mapping, keys and mode.
 - The menus work with a guitar alone (strum + frets).
+- Practice mode: loop a section of the song (the chart's sections, or one marked on the fly from the pause menu) at 50 to 100% speed.
+- Resuming from pause rewinds the song 2 seconds, with a countdown and the notes you already played shown faded, to play along.
 - Song list by folder, title or artist; timing offset; precision mode; English, Portuguese and Spanish.
+
+The [manual](https://github.com/jvses/Ark_hero/blob/main/docs/MANUAL.en.md) explains everything.
 
 ## Known limits
 
-- Tested on PC (Linux) with keyboard, controllers and a USB guitar, and on the R36S (dArkOS) with earlier builds. Other handhelds and CFWs are untested so far: reports are welcome.
-- The Windows build is new; it was built and its tests run with MinGW and wine, not yet on real Windows hardware.
+- Tested on PC (Linux and Windows) with keyboard, controllers and a USB guitar, and on the R36S (dArkOS) with earlier builds. Other handhelds and CFWs are untested so far: reports are welcome.
+- Practice at a slower speed also lowers the pitch (like a slowed-down tape).
+- Wireless controllers that share one USB receiver can get mixed up.
+
+## License
+
+Ark Hero is free software under the GPL-3.0. The font (Terminal 16 Unicode, by artdzyk) and the background photos (Denis Feofilaktov and Xie lipton on Unsplash, ANTONI SHKRABA production on Pexels) keep their own licenses; see the `licenses` folder in each package.
 
 ---
 
@@ -36,4 +45,4 @@ Primeira versão pública. Jogo de ritmo de guitarra em C com SDL3 que toca as m
 - `arkhero.zip`: extraia na pasta `ports/` do cartão (ou instale pelo PortMaster). Músicas em `ports/arkhero/songs/`.
 - `ArkHero-0.1.0-windows-x86_64.zip`: extraia e rode o `arkhero.exe`. Músicas em `songs\`, ou indique a pasta do Clone Hero em `conf\arkhero\pastas.txt`.
 
-Até 4 jogadores (controles, guitarras USB, teclado), modo controle ou guitarra por jogador, contas com o mapeamento de cada um, menus pela guitarra, idiomas português, inglês e espanhol.
+Até 4 jogadores (controles, guitarras USB, teclado), modo controle ou guitarra por jogador, contas com o mapeamento de cada um, menus pela guitarra, modo prática (um trecho em loop, de 50% a 100% da velocidade), despausar volta 2 segundos, idiomas português, inglês e espanhol. Software livre, sob a GPL-3.0. O [manual](https://github.com/jvses/Ark_hero/blob/main/docs/MANUAL.md) explica tudo.

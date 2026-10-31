@@ -21,6 +21,7 @@ void Pcm_free(Pcm *p)
 bool Audio_init(Audio *a)
 {
     a->volume = 1.0f;
+    a->ritmo  = 1.0;
 
     /* buffer pequeno = menos latência; grande demais = estalos (underrun).
        1024 frames a 48 kHz = 21 ms. Dá para trocar sem recompilar. */
@@ -78,18 +79,24 @@ bool Audio_ok(const Audio *a)
 /* ---------------------------------------------------------------------------
  * Reprodução
  * ------------------------------------------------------------------------- */
-void Audio_play(Audio *a, const Pcm *pcm, double atraso_s)
+void Audio_play(Audio *a, const Pcm *pcm, double inicio)
 {
     if (!a->stream) return;
-    SDL_ClearAudioStream(a->stream);
-    a->pcm      = pcm;
-    a->enviados = 0;
-    a->silencio = atraso_s > 0.0 ? (Sint64)(atraso_s * AUDIO_TAXA) : 0;
-    a->pausado  = false;
-    a->suave_ok = false;
-    a->saltos   = 0;
+    a->pcm     = pcm;
+    a->pausado = false;
+    a->saltos  = 0;
+    Audio_seek(a, inicio);
     SDL_ResumeAudioStreamDevice(a->stream);
     Audio_update(a);
+}
+
+/* o que já estava na fila é jogado fora: o próximo frame enviado já é o de t */
+void Audio_seek(Audio *a, double t)
+{
+    if (!a->stream || !a->pcm) return;
+    SDL_ClearAudioStream(a->stream);
+    a->pos      = (Sint64)SDL_floor(t * AUDIO_TAXA);
+    a->suave_ok = false;
 }
 
 void Audio_stop(Audio *a)
@@ -108,6 +115,16 @@ void Audio_pause(Audio *a, bool pausar)
     a->suave_ok = false;   /* na volta, o relógio suave recomeça do cru */
     if (pausar) SDL_PauseAudioStreamDevice(a->stream);
     else        SDL_ResumeAudioStreamDevice(a->stream);
+}
+
+/* A SDL troca a taxa do stream: 0.5 toca na metade da velocidade (e o tom
+   cai uma oitava). O relógio conta em frames da música, então segue certo. */
+void Audio_set_speed(Audio *a, double ritmo)
+{
+    if (!a->stream || ritmo == a->ritmo) return;
+    a->ritmo    = ritmo;
+    a->suave_ok = false;
+    SDL_SetAudioStreamFrequencyRatio(a->stream, (float)ritmo);
 }
 
 bool Audio_playing(const Audio *a)
@@ -138,18 +155,17 @@ void Audio_update(Audio *a)
     if (!a->stream || !a->pcm || a->pausado) return;
 
     while (SDL_GetAudioStreamQueued(a->stream) / BYTES_POR_FRAME < ALVO_NA_FILA) {
-        const Sint64 na_musica = a->enviados - a->silencio;   /* frame da música que vai agora */
         const Sint16 *dados = SILENCIO;
         Sint64 n = BLOCO;
 
-        if (na_musica < 0) {                                  /* ainda no silêncio inicial */
-            if (-na_musica < n) n = -na_musica;
-        } else if (na_musica < a->pcm->frames) {              /* a música */
-            dados = a->pcm->amostras + na_musica * AUDIO_CANAIS;
-            if (a->pcm->frames - na_musica < n) n = a->pcm->frames - na_musica;
+        if (a->pos < 0) {                                     /* ainda no silêncio inicial */
+            if (-a->pos < n) n = -a->pos;
+        } else if (a->pos < a->pcm->frames) {                 /* a música */
+            dados = a->pcm->amostras + a->pos * AUDIO_CANAIS;
+            if (a->pcm->frames - a->pos < n) n = a->pcm->frames - a->pos;
         }
         if (!SDL_PutAudioStreamData(a->stream, dados, (int)(n * BYTES_POR_FRAME))) break;
-        a->enviados += n;
+        a->pos += n;
     }
 }
 
@@ -158,6 +174,8 @@ void Audio_update(Audio *a)
  *
  * Cru: frames enviados - frames ainda na fila - buffer do dispositivo. Ele
  * anda em degraus (o dispositivo puxa um buffer inteiro de cada vez, ~21 ms).
+ * A fila conta frames da música; o buffer, frames do dispositivo: com o
+ * ritmo trocado, ele vale buffer * ritmo frames da música.
  * Suave: anda com o relógio do sistema entre os degraus e é puxado aos
  * poucos para o cru, que é quem manda a longo prazo (ARQUITETURA 5.3).
  * ------------------------------------------------------------------------- */
@@ -165,8 +183,7 @@ double Audio_raw_time(const Audio *a)
 {
     if (!a->stream || !a->pcm) return 0.0;
     const Sint64 na_fila = SDL_GetAudioStreamQueued(a->stream) / BYTES_POR_FRAME;
-    const Sint64 tocados = a->enviados - na_fila - a->frames_buffer;
-    return (double)(tocados - a->silencio) / AUDIO_TAXA;
+    return ((double)(a->pos - na_fila) - a->frames_buffer * a->ritmo) / AUDIO_TAXA;
 }
 
 double Audio_song_time(Audio *a, Uint64 agora_ns)
@@ -179,7 +196,7 @@ double Audio_song_time(Audio *a, Uint64 agora_ns)
         return cru;
     }
 
-    a->t_suave  += (double)(agora_ns - a->ultimo_ns) / 1e9;
+    a->t_suave  += (double)(agora_ns - a->ultimo_ns) / 1e9 * a->ritmo;
     a->ultimo_ns = agora_ns;
 
     const double erro = cru - a->t_suave;
