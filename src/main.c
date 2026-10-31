@@ -19,6 +19,7 @@
 #include "platform/carregador.h"
 #include "platform/input.h"
 #include "platform/musica.h"
+#include "platform/pasta.h"
 #include "platform/video.h"
 
 typedef enum { SOM_NADA, SOM_PARTIDA, SOM_TESTE } OQueToca;
@@ -85,11 +86,33 @@ typedef struct {
  *     chave|pontos|dificuldade|porcentagem|full combo|instrumento|nome
  * (o instrumento e o nome vieram depois: sem eles, guitarra e convidado) 
  * ------------------------------------------------------------------------- */
+/* primeira vez: o idioma do sistema, se houver a tradução; senão o inglês */
+static void idioma_do_sistema(App *app)
+{
+    Game *g = &app->game;
+    int n = 0;
+    SDL_Locale **locais = SDL_GetPreferredLocales(&n);
+    const char *achado = NULL;
+    for (int i = 0; i < n && !achado; i++)
+        for (int k = 0; k < g->n_idiomas && !achado; k++)
+            if (SDL_strcmp(locais[i]->language, g->idiomas[k]) == 0) achado = g->idiomas[k];
+    if (!achado)
+        for (int k = 0; k < g->n_idiomas && !achado; k++)
+            if (SDL_strcmp(g->idiomas[k], "en") == 0) achado = g->idiomas[k];
+    SDL_Log("[idioma] primeira vez: %s (sistema: %s)", achado ? achado : g->opcoes.idioma,
+            n > 0 ? locais[0]->language : "?");
+    if (achado) SDL_strlcpy(g->opcoes.idioma, achado, sizeof(g->opcoes.idioma));
+    SDL_free(locais);
+}
+
 static void carrega_opcoes(App *app)
 {
     size_t tam = 0;
     char *texto = SDL_LoadFile(app->arquivo_opcoes, &tam);
-    if (!texto) return;   /* primeira vez: ficam os padrões */
+    if (!texto) {   /* primeira vez: ficam os padrões */
+        idioma_do_sistema(app);
+        return;
+    }
     Opcoes_read(&app->game.opcoes, texto, tam);
     SDL_free(texto);
     Game_songs_done(&app->game);   /* o modo de organizar pode ter mudado */
@@ -757,11 +780,52 @@ static void monta_hud(App *app, Hud *h, Uint64 agora_ns)
 /* ---------------------------------------------------------------------------
  * Callbacks da SDL
  * ------------------------------------------------------------------------- */
+#ifdef SDL_PLATFORM_WINDOWS
+/* No Windows não há o script de launch para guardar a saída (nem console: o
+   .exe é de janela). O próprio jogo escreve o log.txt, na pasta de dados. */
+static SDL_IOStream         *arquivo_log;
+static SDL_LogOutputFunction log_da_sdl;
+static void                 *log_da_sdl_dado;
+
+static void SDLCALL escreve_log(void *dado, int categoria, SDL_LogPriority prioridade, const char *msg)
+{
+    (void)dado;
+    SDL_IOprintf(arquivo_log, "%s\n", msg);
+    SDL_FlushIO(arquivo_log);
+    log_da_sdl(log_da_sdl_dado, categoria, prioridade, msg);
+}
+
+static void abre_log(void)
+{
+    char *pasta = Pasta_dados();
+    if (!pasta) return;
+    char caminho[600];
+    SDL_snprintf(caminho, sizeof(caminho), "%slog.txt", pasta);
+    SDL_free(pasta);
+    arquivo_log = SDL_IOFromFile(caminho, "w");
+    if (!arquivo_log) return;
+    SDL_GetLogOutputFunction(&log_da_sdl, &log_da_sdl_dado);
+    SDL_SetLogOutputFunction(escreve_log, NULL);
+}
+
+static void fecha_log(void)
+{
+    if (!arquivo_log) return;
+    SDL_SetLogOutputFunction(log_da_sdl, log_da_sdl_dado);   /* a SDL ainda loga depois do AppQuit */
+    SDL_CloseIO(arquivo_log);
+    arquivo_log = NULL;
+}
+#else
+static void abre_log(void) {}
+static void fecha_log(void) {}
+#endif
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     (void)argc;
     (void)argv;
-    SDL_SetAppMetadata("Ark Hero", "0.1", "com.arkhero.game");
+    SDL_SetAppMetadata("Ark Hero", ARKHERO_VERSAO, "com.arkhero.game");
+    abre_log();
 
     App *app = SDL_calloc(1, sizeof(App));   /* tudo zerado: o Quit aguenta init parcial */
     if (!app) return SDL_APP_FAILURE;
@@ -785,8 +849,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     SDL_snprintf(app->pasta_idiomas, sizeof(app->pasta_idiomas), "%sassets/lang/", SDL_GetBasePath());
     lista_idiomas(app);
 
-    char *pref = SDL_GetPrefPath("", "arkhero");
-    SDL_Log("[arkhero] versao 0.1 | executavel em %s | dados em %s", SDL_GetBasePath(), pref ? pref : "?");
+    char *pref = Pasta_dados();
+    SDL_Log("[arkhero] versao %s | executavel em %s | dados em %s", ARKHERO_VERSAO, SDL_GetBasePath(),
+            pref ? pref : "?");
     SDL_Log("[arkhero] %d nucleo(s), %d MB de RAM, %s", SDL_GetNumLogicalCPUCores(), SDL_GetSystemRAM(),
             SDL_GetPlatform());
     if (pref) {
@@ -809,6 +874,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     App *app = appstate;
     if (event->type == SDL_EVENT_QUIT) return SDL_APP_SUCCESS;
+
+    /* F11: tela cheia, no PC (no console o jogo já abre assim) */
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.scancode == SDL_SCANCODE_F11 && !event->key.repeat) {
+        const bool cheia = SDL_GetWindowFlags(app->video.janela) & SDL_WINDOW_FULLSCREEN;
+        SDL_SetWindowFullscreen(app->video.janela, !cheia);
+    }
 
     Input_event(&app->input, event);   /* só anota; quem age é o Iterate */
     return app->input.sair ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
@@ -886,5 +957,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     Video_quit(&app->video);
     Texto_limpa();
     SDL_free(app);
+    fecha_log();
     /* sem SDL_Quit(): a SDL chama sozinha depois daqui */
 }

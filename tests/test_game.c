@@ -1108,6 +1108,39 @@ static void teste_controle_desconectado(void)
     Game_quit(&g);
 }
 
+/* dois jogando: quem perde o controle no meio da música não para os outros */
+static void teste_controle_cai_no_meio(void)
+{
+    Game g;
+    Game_init(&g);
+    musica(&g, "Musica", "Banda", "");
+    Game_songs_done(&g);
+    g.jog[0].na_sessao = g.jog[1].na_sessao = true;
+    bool con[4] = { true, true, false, false }, gui[4] = { false };
+    int  tec[4] = { TECLAS_OK, TECLAS_OK, TECLAS_OK, TECLAS_OK };
+    Game_set_devices(&g, con, tec, gui);
+    g.musica = 0;
+    Game_open_chart(&g, CHART_DOIS, sizeof(CHART_DOIS) - 1);
+    frame2(&g, ACAO_BIT(ACAO_CONFIRMA), 0);               /* o J1 fica pronto */
+    frame2(&g, 0, ACAO_BIT(ACAO_CONFIRMA));               /* o J2 também: carrega */
+    CONFERE(g.tela == TELA_CARREGANDO && Game_n_jogando(&g) == 2);
+    Game_audio_ready(&g, true, 0.0);
+    frame2(&g, 0, 0);
+    CONFERE(g.tela == TELA_JOGO && !g.pausado);
+
+    con[0] = false;                                       /* o J1 cai */
+    Game_set_devices(&g, con, tec, gui);
+    frame2(&g, 0, 0);
+    CONFERE(!g.pausado && g.aviso != NULL);               /* a música segue, com um aviso */
+    CONFERE(g.jog[0].ativo && g.jog[1].ativo);            /* e a pista do J1 continua lá */
+
+    con[1] = false;                                       /* o J2 também: ninguém sobrou */
+    Game_set_devices(&g, con, tec, gui);
+    frame2(&g, 0, 0);
+    CONFERE(g.pausado);
+    Game_quit(&g);
+}
+
 static void teste_chart_so_de_baixo(void)
 {
     static const char SO_BAIXO[] = "[Song]\n{\n  Resolution = 192\n}\n[SyncTrack]\n{\n  0 = B 120000\n}\n"
@@ -1558,6 +1591,7 @@ int main(void)
     teste_partes_do_chart();
     teste_teclado_dividido();
     teste_controle_desconectado();
+    teste_controle_cai_no_meio();
     teste_tela_de_jogadores();
     teste_quem_some_sai();
     teste_cartao_modo_e_controles();

@@ -1,0 +1,4 @@
+// Recursos do arkhero.exe: o icone (a SDL usa o primeiro do .exe na janela)
+// e o manifest (1 = o do processo, 24 = RT_MANIFEST).
+1 ICON "arkhero.ico"
+1 24 "arkhero.manifest"

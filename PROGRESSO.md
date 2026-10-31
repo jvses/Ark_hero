@@ -17,10 +17,14 @@ a direção do João. Cada etapa é testada no R36S antes do commit.
 | 4c | Recordes, organizar por pastas/título/artista, opções salvas | feita, testada no PC e no R36S |
 | 4d | `.mid` e MP3, HOPO na pista, penalidade, ajuste de tempo, botões frontais por posição | feita, testada no R36S |
 | 4e | Carga em paralelo, acorde exato, licenças e pasta `songs/` no pacote | **feita; falta testar** |
-| 5 | Lua: `config.lua` e `regras.lua`, com recarga a quente | |
-| 6 | Calibração de áudio e vídeo | |
-| 7 | Biblioteca de músicas + cache | |
-| 8 | Modo guitarra (com palhetada e HOPO) | |
+| 5 | Multijogador, instrumentos, som de erro, carga em aparelhos menores | feita, testada no PC |
+| 5b | Teclado dividido, teclas exclusivas, idiomas | feita, testada no PC |
+| 5c | A fonte do jogo, com acentos | feita, testada no PC |
+| 6 | Tela de jogadores, contas, modo guitarra | feita, testada no PC com guitarra |
+| 6b | Menus pela guitarra, jogadores presos ao aparelho, perfis por conta | feita, testada no PC (commit `1dca057`); falta o game stick |
+| 6c | Distribuição: pacote do PortMaster, build do Windows, release 0.1.0 | **feita; falta testar** |
+| 7 | Modo prática: seções, A-B, velocidade; despausar volta 2 s | planejada |
+| depois | Lua (`config.lua`, `regras.lua`), calibração de áudio e vídeo, cache da biblioteca | |
 
 ---
 
@@ -1271,6 +1275,100 @@ modos. Traduções completas (166 textos em en e es).
 
 ---
 
+## Etapa 6c: distribuição: PortMaster, Windows, release 0.1.0 (2026-10-30)
+
+### Pedido (depois de testar a 6b no PC: contas, modo e botões "muito bons")
+
+- Na partida, quem perde o controle fica sem apertar nada e os outros seguem
+  jogando: nada de interromper a partida ou mudar as pistas.
+- Atualizar o pacote do PortMaster (o `port.json` ainda descrevia o teste da
+  bola quicando) e as outras documentações.
+- Uma build para Windows, de preferência por compilação cruzada num docker.
+- Como colocar o port na comunidade do PortMaster (critérios, testes, se
+  aceitam jogo feito com ajuda de IA), e preparar os pacotes para uma
+  release no GitHub. O jogo é "ready to run".
+- Para lembrar na próxima etapa: despausar volta uns 2 s da música (anotado
+  na Etapa 7).
+
+### O que foi feito
+
+**Controle que cai no meio da música** (`game.c`): se ainda há alguém da
+partida com aparelho, a música segue, com o aviso "Um controle desconectou";
+a pista de quem caiu continua lá e as notas passam. Só pausa quando não sobra
+ninguém (um jogador sozinho, por exemplo). Se o controle volta, ele cai no
+mesmo espaço e o jogador continua.
+
+**Pacote do PortMaster**, no formato do repositório PortMaster-New:
+- `packaging/portmaster/` tem o que vai no pull request: `Ark Hero.sh`,
+  `port.json`, `README.md` (em inglês, com agradecimentos e controles),
+  `gameinfo.xml` e `screenshot.png` (640x480, de gameplay, com um chart
+  inventado para isso, sem música de ninguém);
+- o script de launch ficou no tamanho dos ports recentes (o PortMaster
+  rejeita script "verboso"): saíram o bloco de diagnóstico, a checagem do
+  binário e as variáveis que não mudam nada;
+- `licenses/` plana, um `LICENSE.<componente>.txt` por componente
+  (`tools/licencas.sh`, usado pelos dois pacotes). A do jogo entra quando
+  existir um `LICENSE` na raiz;
+- `tools/package_port.sh` monta o `dist/arkhero.zip` como o
+  `build_release.py` do PortMaster monta (o README vira `arkhero.md` dentro
+  da pasta) e a pasta do pull request em `dist/portmaster-pr/arkhero/`;
+- o pacote não leva mais `assets/vaporwave_guitar3.jpg` (não usada): o zip
+  caiu de 4,9 MB para 2,9 MB;
+- a pasta `songs/` leva `PUT_YOUR_SONGS_HERE.txt`, em inglês e português.
+
+**Windows** (`./tools/docker_build.sh windows` e `./tools/package_windows.sh`):
+- `docker/Dockerfile.windows` (Debian 12 + MinGW-w64 + wine) e
+  `tools/mingw-w64.cmake`; o `container_build.sh` aceita `windows` e compila
+  a SDL3 e as bibliotecas de áudio para o Windows, uma vez;
+- `arkhero.exe` com as bibliotecas do MinGW dentro (só a `SDL3.dll` ao
+  lado), sem console, com ícone e manifest (UTF-8 nos caminhos: sem ele, o
+  `fopen` da vorbisfile e da opusfile falha em pastas com acento);
+- `platform/pasta.c` (`Pasta_dados()`): no Windows os dados ficam em
+  `conf\arkhero\` ao lado do `.exe`, como no console (ou no `%APPDATA%` se
+  ali não der para gravar); no Linux nada muda;
+- o log vai para `conf\arkhero\log.txt` (no Windows não há o script de
+  launch para guardar a saída);
+- o renderer é o que a SDL escolher (Direct3D); o GLES forçado fica para o
+  Linux;
+- caminhos do `pastas.txt` com `\` funcionam;
+- F11 alterna a tela cheia (no PC, Linux também);
+- pacote: `dist/ArkHero-0.1.0-windows-x86_64.zip`, com `README.txt` em
+  inglês e português.
+
+**Primeira execução**: sem `opcoes.cfg`, o idioma vem do sistema (pt, en ou
+es); sem nenhum conhecido, inglês. Quem já tem o arquivo continua como
+estava.
+
+**Versão 0.1.0**: no `CMakeLists.txt` (`project(... VERSION 0.1.0)`), passada
+ao código e ao log. Notas da release em `packaging/RELEASE_NOTES.md`.
+
+**Documentação**: README reescrito (estado, instalação no PortMaster e no
+Windows, controles, compilação); a tabela do roteiro aqui em cima.
+
+**Testes**: 48 no `test_game` (novo: controle que cai no meio da música), no
+PC com ASan e UBSan, no aarch64 e no Windows (pelo wine, no container). O
+`arkhero.exe` também abriu no wine, sem tela: criou `conf\arkhero\` ao lado
+do `.exe`, escreveu o `log.txt`, escolheu o inglês e achou uma música numa
+pasta "Ação e Música". Nenhum aviso de compilação no código do jogo (os do
+build do Windows são de dentro da SDL). O `.exe` só pede `KERNEL32`,
+`msvcrt` e a `SDL3.dll`. A ferramenta de checagem do PortMaster
+(`build_release.py --do-check`) não rodou aqui; a pasta do pull request foi
+conferida à mão contra as regras deles (arquivos, nomes, script 644 com LF,
+screenshot 640x480, licenças planas).
+
+### Como testar
+
+- No R36S/game stick: instalar o `dist/arkhero.zip` (extrair em `ports/`),
+  conferir que abre, que o `log.txt` aparece e que as músicas de `songs/`
+  são achadas.
+- Partida com dois controles: desligar um no meio da música (a música segue,
+  com o aviso); desligar o outro também (pausa).
+- Num Windows: extrair o zip do Windows, rodar o `arkhero.exe`, pôr uma
+  música em `songs\`, testar teclado, controle e guitarra, F11, e uma pasta
+  com acento no `pastas.txt`.
+
+---
+
 ## Etapa 7 (planejada): modo prática
 
 Pedido: um modo sem como perder, com a velocidade da música ajustável
@@ -1292,6 +1390,9 @@ durante a partida e a escolha de trechos com loop e pontos A-B.
   se o som grave incomodar.
 - **Sem perder**: hoje já não existe "perder" (não há barra de rock); o modo
   prática também não grava recorde.
+- **Despausar volta uns 2 s** (pedido de 2026-10-30, para lembrar nesta
+  etapa): ao sair da pausa, a música recua uns 2 segundos, com a contagem,
+  para o jogador se posicionar. Vale para a partida normal também.
 
 ---
 

@@ -1,14 +1,16 @@
 # Ark Hero -- build do jogo.
 #
-# Este arquivo e o MESMO nos tres cenarios:
+# Este arquivo e o MESMO nos quatro cenarios:
 #   1. build nativo no desktop (SDL3 do sistema)
 #   2. build dentro do container Debian 12 (SDL3 compilada em third_party/sdl3-<arch>)
 #   3. build direto no console, se algum dia for necessario (plano B)
+#   4. Windows, por compilacao cruzada no container (tools/mingw-w64.cmake)
 #
-# A unica coisa que muda entre eles e o CMAKE_PREFIX_PATH.
+# A unica coisa que muda entre eles e o CMAKE_PREFIX_PATH (e, no Windows, o
+# toolchain).
 
 cmake_minimum_required(VERSION 3.16)
-project(ArkHero VERSION 0.0.1 LANGUAGES C)
+project(ArkHero VERSION 0.1.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -73,6 +75,7 @@ add_executable(arkhero
     src/platform/audio.c
     src/platform/carregador.c
     src/platform/musica.c
+    src/platform/pasta.c
     src/draw/draw.c
     src/draw/fonte.c
     src/draw/formas.c
@@ -81,6 +84,7 @@ add_executable(arkhero
 )
 
 target_include_directories(arkhero PRIVATE src)
+target_compile_definitions(arkhero PRIVATE ARKHERO_VERSAO="${PROJECT_VERSION}")
 # dr_mp3.h (um arquivo so; a implementacao entra no carregador.c). SYSTEM: os
 # avisos de dentro dele nao sao do jogo
 target_include_directories(arkhero SYSTEM PRIVATE third_party/dr_libs third_party/stb)
@@ -99,15 +103,25 @@ target_compile_options(arkhero PRIVATE
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wshadow>
 )
 
-set_target_properties(arkhero PROPERTIES
-    OUTPUT_NAME "arkhero.${ARKHERO_ARCH}"
-    # $ORIGIN = pasta do proprio binario. Com isso o executavel acha a
-    # libSDL3 empacotada em libs.<arch>/ mesmo se LD_LIBRARY_PATH nao estiver
-    # setado -- o script do PortMaster seta de qualquer forma, mas assim o
-    # pacote tambem funciona rodando na mao, o que ajuda a depurar.
-    BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "$ORIGIN/libs.${ARKHERO_ARCH}"
-)
+if(WIN32)
+    # arkhero.exe, sem a janela de console (o log vai para um arquivo, ver
+    # main.c), com o icone e o manifest (packaging/windows/arkhero.rc). O
+    # -static poe as libs do MinGW dentro do .exe: ao lado dele fica so a
+    # SDL3.dll.
+    set_target_properties(arkhero PROPERTIES OUTPUT_NAME "arkhero" WIN32_EXECUTABLE TRUE)
+    target_sources(arkhero PRIVATE packaging/windows/arkhero.rc)
+    target_link_options(arkhero PRIVATE -static)
+else()
+    set_target_properties(arkhero PROPERTIES
+        OUTPUT_NAME "arkhero.${ARKHERO_ARCH}"
+        # $ORIGIN = pasta do proprio binario. Com isso o executavel acha a
+        # libSDL3 empacotada em libs.<arch>/ mesmo se LD_LIBRARY_PATH nao estiver
+        # setado -- o script do PortMaster seta de qualquer forma, mas assim o
+        # pacote tambem funciona rodando na mao, o que ajuda a depurar.
+        BUILD_WITH_INSTALL_RPATH TRUE
+        INSTALL_RPATH "$ORIGIN/libs.${ARKHERO_ARCH}"
+    )
+endif()
 
 # ---------------------------------------------------------------------------
 # Dados do jogo (imagens, depois scripts Lua). O jogo le tudo a partir de
@@ -132,6 +146,9 @@ enable_testing()
 add_executable(test_game tests/test_game.c ${ARKHERO_GAME_SRC})
 target_include_directories(test_game PRIVATE src)
 target_link_libraries(test_game PRIVATE m)   # fabs nos testes
+if(WIN32)
+    target_link_options(test_game PRIVATE -static)   # roda no wine sem DLL do MinGW
+endif()
 target_compile_options(test_game PRIVATE
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wshadow>
 )

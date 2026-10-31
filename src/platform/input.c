@@ -1,4 +1,5 @@
 #include "platform/input.h"
+#include "platform/pasta.h"
 
 #include "game/texto.h"   /* N_(): os rótulos para a tela são chaves de tradução */
 
@@ -798,9 +799,7 @@ bool Input_init(Input *inp)
     inp->sair       = false;
     SDL_strlcpy(inp->ultimo, "-", sizeof(inp->ultimo));
 
-    /* No console o script de launch aponta XDG_DATA_HOME para conf/, então
-       isto vira <pasta do jogo>/conf/arkhero/. No PC, ~/.local/share/arkhero/. */
-    char *pasta = SDL_GetPrefPath("", "arkhero");
+    char *pasta = Pasta_dados();
     if (!pasta) SDL_Log("[input] sem pasta para salvar os controles: %s", SDL_GetError());
 
     /* mapeamentos extras (controles que a SDL não conhece), um por linha, no

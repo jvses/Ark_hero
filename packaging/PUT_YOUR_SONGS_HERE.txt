@@ -1,0 +1,22 @@
+Ark Hero - songs
+
+Put your songs here, in the Clone Hero format: one folder per song, with
+notes.chart or notes.mid, song.ini and the audio (ogg, opus, mp3 or wav).
+Subfolders are fine (by game, by style...): the song list follows them.
+
+To use a library that is somewhere else, write the path of its folder, one
+per line, in conf/arkhero/pastas.txt (the game creates that file on the
+first run).
+
+--------------------------------------------------------------------------
+
+Ark Hero - músicas
+
+Coloque aqui as pastas de música no formato do Clone Hero: uma pasta por
+música, com notes.chart ou notes.mid, song.ini e o áudio (ogg, opus, mp3 ou
+wav). Pode organizar em subpastas (por jogo, estilo...): a lista do jogo
+segue as subpastas.
+
+Para usar uma biblioteca que já está em outro lugar, escreva o caminho da
+pasta, um por linha, em conf/arkhero/pastas.txt (o jogo cria esse arquivo na
+primeira vez que roda).

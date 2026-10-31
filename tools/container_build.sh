@@ -2,6 +2,9 @@
 # Roda DENTRO do container (ou direto no console, no plano B).
 # Compila a SDL3 (uma vez, fica em cache) e depois o jogo, e deixa os
 # artefatos prontos em prebuilt/<arch>/.
+#
+#   tools/container_build.sh           -> para a arquitetura do container
+#   tools/container_build.sh windows   -> .exe pelo MinGW (Dockerfile.windows)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -9,6 +12,18 @@ cd "$ROOT"
 
 ARCH="$(uname -m)"
 [ "$ARCH" = "arm64" ] && ARCH="aarch64"
+[ "${1:-}" = "windows" ] && ARCH="windows"
+
+# compilacao cruzada: o CMake usa o toolchain do MinGW; o configure da
+# opusfile, o --host
+CRUZADO=()
+HOST=()
+SDL_PRONTA=lib/libSDL3.so
+if [ "$ARCH" = "windows" ]; then
+    CRUZADO=(-DCMAKE_TOOLCHAIN_FILE="$ROOT/tools/mingw-w64.cmake")
+    HOST=(--host=x86_64-w64-mingw32)
+    SDL_PRONTA=bin/SDL3.dll
+fi
 
 JOBS="${JOBS:-$(nproc)}"
 SDL_PREFIX="$ROOT/third_party/sdl3-$ARCH"
@@ -21,7 +36,7 @@ echo "==> glibc do ambiente de build: $(ldd --version | head -1)"
 # 1) SDL3 -- so compila se ainda nao existir. Esse passo e o demorado
 #    (emulado em arm64 pode levar bastante); depois fica cacheado no disco.
 # ---------------------------------------------------------------------------
-if [ ! -f "$SDL_PREFIX/lib/libSDL3.so" ]; then
+if [ ! -f "$SDL_PREFIX/$SDL_PRONTA" ]; then
     TARBALL="$(ls -1 "$ROOT"/third_party/src/SDL3-*.tar.gz | head -1)"
     [ -f "$TARBALL" ] || { echo "ERRO: tarball da SDL3 nao encontrado em third_party/src/"; exit 1; }
 
@@ -36,7 +51,7 @@ if [ ! -f "$SDL_PREFIX/lib/libSDL3.so" ]; then
     rm -rf "$ROOT/build/sdl3-$ARCH"
 
     echo "==> configurando SDL3"
-    cmake -S "$SRCDIR" -B "$ROOT/build/sdl3-$ARCH" -G Ninja \
+    cmake -S "$SRCDIR" -B "$ROOT/build/sdl3-$ARCH" -G Ninja "${CRUZADO[@]}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="$SDL_PREFIX" \
         -DSDL_SHARED=ON \
@@ -80,7 +95,7 @@ if [ ! -f "$XIPH_PREFIX/lib/libopusfile.a" ]; then
         local nome="$1"; shift
         local src; src="$(extrai "$nome")"
         echo "==> compilando $nome"
-        cmake -S "$src" -B "$src/build" -G Ninja \
+        cmake -S "$src" -B "$src/build" -G Ninja "${CRUZADO[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$XIPH_PREFIX" \
             -DCMAKE_INSTALL_LIBDIR=lib \
@@ -95,13 +110,17 @@ if [ ! -f "$XIPH_PREFIX/lib/libopusfile.a" ]; then
 
     cmake_lib libogg    -DINSTALL_DOCS=OFF
     cmake_lib libvorbis
-    cmake_lib opus      -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF
+    # no MinGW, o stack protector e o FORTIFY da opus pedem a libssp no link
+    # do jogo: desligados la (no Linux ficam como a opus quer)
+    PROTECAO=()
+    [ "$ARCH" = "windows" ] && PROTECAO=(-DOPUS_STACK_PROTECTOR=OFF -DOPUS_FORTIFY_SOURCE=OFF)
+    cmake_lib opus      -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF "${PROTECAO[@]}"
 
     # opusfile 0.12 nao tem CMake; o configure ja vem pronto no tarball
     SRC_OPUSFILE="$(extrai opusfile)"
     echo "==> compilando opusfile"
     ( cd "$SRC_OPUSFILE" && \
-      PKG_CONFIG_PATH="$XIPH_PREFIX/lib/pkgconfig" ./configure --prefix="$XIPH_PREFIX" \
+      PKG_CONFIG_LIBDIR="$XIPH_PREFIX/lib/pkgconfig" ./configure "${HOST[@]}" --prefix="$XIPH_PREFIX" \
           --enable-static --disable-shared --with-pic \
           --disable-http --disable-examples --disable-doc && \
       make -j "$JOBS" && make install )
@@ -113,7 +132,8 @@ fi
 # 2) O jogo
 # ---------------------------------------------------------------------------
 echo "==> compilando Ark Hero"
-cmake -S "$ROOT" -B "$ROOT/build/$ARCH" -G Ninja \
+PKG_CONFIG_LIBDIR="$XIPH_PREFIX/lib/pkgconfig" \
+cmake -S "$ROOT" -B "$ROOT/build/$ARCH" -G Ninja "${CRUZADO[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="$SDL_PREFIX;$XIPH_PREFIX" \
     -DARKHERO_AUDIO_STATIC=ON \
@@ -124,6 +144,22 @@ cmake --build "$ROOT/build/$ARCH" -j "$JOBS"
 # 3) Coleta dos artefatos
 # ---------------------------------------------------------------------------
 mkdir -p "$OUT"
+
+if [ "$ARCH" = "windows" ]; then
+    # os testes da logica, pelo wine (o CMAKE_CROSSCOMPILING_EMULATOR do
+    # toolchain). A pasta do wine fica no build: o /tmp do container nao e nosso
+    WINEPREFIX="$ROOT/build/wine" WINEDEBUG=-all ctest --test-dir "$ROOT/build/$ARCH" --output-on-failure
+    cp "$SDL_PREFIX/bin/SDL3.dll" "$ROOT/build/$ARCH/arkhero.exe" "$OUT"/
+    x86_64-w64-mingw32-strip --strip-unneeded "$OUT/arkhero.exe" "$OUT/SDL3.dll"
+    echo
+    echo "==> pronto. artefatos em prebuilt/$ARCH:"
+    ls -la "$OUT"
+    echo
+    echo "==> DLLs que o arkhero.exe pede (fora a SDL3, so as do proprio Windows):"
+    x86_64-w64-mingw32-objdump -p "$OUT/arkhero.exe" | grep 'DLL Name' | sort -u
+    exit 0
+fi
+
 cp -a "$SDL_PREFIX"/lib/libSDL3.so.0* "$OUT"/
 cp -a "$ROOT/build/$ARCH/arkhero.$ARCH" "$OUT"/
 

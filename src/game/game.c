@@ -838,6 +838,14 @@ static void atualiza_jogo(Game *g, const Botoes *b, int n, const Botoes *u, cons
  * passa para o próximo); na partida, ela pausa, e quem perdeu o controle
  * pode ligar outro (ele cai no primeiro espaço livre, o mesmo de antes).
  * Quem entrou pelo teclado nunca some. */
+/* alguém da partida ainda tem com o que tocar? */
+static bool alguem_tocando(const Game *g)
+{
+    for (int k = 0; k < GAME_MAX_JOGADORES; k++)
+        if (g->jog[k].ativo && Game_present(g, k)) return true;
+    return false;
+}
+
 static void confere_aparelhos(Game *g)
 {
     if (!g->aparelhos) return;
@@ -853,8 +861,14 @@ static void confere_aparelhos(Game *g)
             j->ativo  = false;
             j->pronto = false;
         } else if (g->tela == TELA_JOGO && j->ativo && sumiu && !g->terminou && !g->pausado) {
-            pausa(g);
-            avisa(g, N_("Um controle desconectou: a partida pausou"));
+            /* com mais alguém tocando a música segue: quem caiu só deixa as
+               notas passarem. Sem ninguém, pausa. */
+            if (alguem_tocando(g)) {
+                avisa(g, N_("Um controle desconectou"));
+            } else {
+                pausa(g);
+                avisa(g, N_("Um controle desconectou: a partida pausou"));
+            }
         }
     }
 }

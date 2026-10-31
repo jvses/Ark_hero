@@ -184,6 +184,7 @@ Contas demais = Too many accounts
 todos prontos: escolha a música... = all ready: pick the song...
 recorde: %ld de %s (%s %s, %d%%%s) = best: %ld by %s (%s %s, %d%%%s)
 Um controle desconectou: a partida pausou = A controller disconnected: game paused
+Um controle desconectou = A controller disconnected
 Pronto = Ready
 Escrever o nome = Type the name
 [%s] joga no teclado = [%s] play on keyboard

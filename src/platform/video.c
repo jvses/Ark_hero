@@ -28,7 +28,8 @@ static void log_drivers(void)
     SDL_Log("render disp.  : %s", buf);
 }
 
-/* opengles2 primeiro, para o PC testar o mesmo caminho do console */
+/* opengles2 primeiro, para o PC testar o mesmo caminho do console. No
+   Windows, o que a SDL escolher (Direct3D): lá o GLES depende do driver. */
 static SDL_Renderer *cria_renderer(SDL_Window *janela)
 {
     const char *tentativas[3];
@@ -36,7 +37,9 @@ static SDL_Renderer *cria_renderer(SDL_Window *janela)
 
     const char *forcado = SDL_getenv("ARKHERO_RENDER_DRIVER");
     if (forcado && *forcado) tentativas[n++] = forcado;
+#ifndef SDL_PLATFORM_WINDOWS
     tentativas[n++] = "opengles2";
+#endif
     tentativas[n++] = NULL;   /* deixa a SDL escolher */
 
     for (int i = 0; i < n; i++) {
@@ -70,7 +73,10 @@ bool Video_init(Video *vid)
 
     /* No console o script de launch exporta ARKHERO_FULLSCREEN=1.
        No PC a janela pode ser redimensionada: a resolução lógica cuida da escala. */
-    SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+    SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
+#ifndef SDL_PLATFORM_WINDOWS
+    flags |= SDL_WINDOW_OPENGL;
+#endif
     const char *fs = SDL_getenv("ARKHERO_FULLSCREEN");
     if (fs && SDL_strcmp(fs, "1") == 0) flags |= SDL_WINDOW_FULLSCREEN;
 

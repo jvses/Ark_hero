@@ -5,62 +5,35 @@
 #   ./tools/docker_build.sh aarch64
 #   ./tools/docker_build.sh x86_64      (opcional)
 #   ./tools/package_port.sh
+#
+# Saidas:
+#   dist/arkhero.zip            o zip do port, igual ao que o PortMaster monta
+#                               (instala pelo PortMaster ou extraindo em ports/)
+#   dist/Ark Hero.sh, dist/arkhero/   o mesmo conteudo, extraido
+#   dist/portmaster-pr/arkhero/       a pasta para o pull request no
+#                               PortMaster-New (ports/arkhero/)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST="$ROOT/dist"
-PORT="$DIST/arkhero"
+PM="$ROOT/packaging/portmaster"
+PR="$DIST/portmaster-pr/arkhero"
+JOGO="$PR/arkhero"
 
-rm -rf "$DIST"
-mkdir -p "$PORT/conf"
+rm -rf "$DIST/portmaster-pr" "$DIST/arkhero" "$DIST/Ark Hero.sh" "$DIST/arkhero.zip"
+mkdir -p "$JOGO"
 
-# 1) arquivos estaticos do port
-cp "$ROOT/packaging/portmaster/Ark Hero.sh" "$DIST/"
-cp -r "$ROOT/packaging/portmaster/arkhero/." "$PORT/"
-chmod +x "$DIST/Ark Hero.sh"
+# 1) a pasta do pull request: metadados do PortMaster + a pasta do jogo
+cp "$PM/Ark Hero.sh" "$PM/port.json" "$PM/README.md" "$PM/gameinfo.xml" "$PM/screenshot.png" "$PR/"
 
-# 1b) dados do jogo (imagens, depois scripts). Copia de verdade, sem symlink:
-#     a particao de ROMS e FAT32/exFAT. O -L resolve qualquer link no caminho.
-if [ -d "$ROOT/assets" ]; then
-    cp -rL "$ROOT/assets" "$PORT/assets"
-    # as musicas de teste nunca vao no pacote: tem direitos autorais
-    rm -rf "$PORT/assets/musics"
-    # nem arquivos baixados que ja foram extraidos (o zip da fonte, por exemplo)
-    find "$PORT/assets" -name "*.zip" -delete
-    echo "++ incluido assets/ ($(du -sh "$PORT/assets" | cut -f1))"
-fi
+# dados do jogo. Copia de verdade, sem symlink: a particao de ROMS e
+# FAT32/exFAT. As musicas de teste nunca vao: tem direitos autorais.
+mkdir -p "$JOGO/assets"
+cp -rL "$ROOT/assets/fonts" "$ROOT/assets/images" "$ROOT/assets/lang" "$JOGO/assets/"
+"$ROOT/tools/licencas.sh" "$JOGO/licenses"
 
-# 1c) licencas das bibliotecas que vao no pacote. As da Xiph (BSD) EXIGEM o
-#     aviso de copyright junto do binario; as outras vao por cortesia.
-LIC="$PORT/licencas"
-mkdir -p "$LIC"
-for par in "SDL3:LICENSE.txt" "libogg:COPYING" "libvorbis:COPYING" "opus:COPYING" "opusfile:COPYING"; do
-    nome="${par%%:*}"; arquivo="${par#*:}"
-    tarball="$(ls -1 "$ROOT"/third_party/src/"$nome"-*.tar.gz 2>/dev/null | head -1)"
-    [ -f "$tarball" ] || { echo "ERRO: $nome-*.tar.gz nao encontrado (licenca)"; exit 1; }
-    pasta="$(basename "$tarball" .tar.gz)"
-    tar xzf "$tarball" -O "$pasta/$arquivo" > "$LIC/$pasta.txt"
-done
-cp "$ROOT/third_party/dr_libs/README.md" "$LIC/dr_mp3.txt"
-sed -n '/^This software is available as a choice/,$p' "$ROOT/third_party/dr_libs/dr_mp3.h" >> "$LIC/dr_mp3.txt"
-cp "$ROOT/third_party/stb/README.md" "$LIC/stb_truetype.txt"
-sed -n '/^This software is available under 2 licenses/,$p' "$ROOT/third_party/stb/stb_truetype.h" >> "$LIC/stb_truetype.txt"
-cp "$ROOT/assets/fonts/FONTE.txt" "$LIC/fonte_terminal16unicode.txt"
-echo "++ incluido licencas/ ($(ls "$LIC" | wc -l) arquivos)"
-
-# 1d) a pasta das musicas, com um aviso (o jogo e distribuido sem musicas)
-mkdir -p "$PORT/songs"
-cat > "$PORT/songs/COLOQUE_AS_MUSICAS_AQUI.txt" <<'TXT'
-Ark Hero - musicas
-
-Coloque aqui as pastas de musica no formato do Clone Hero: uma pasta por
-musica, com notes.chart ou notes.mid, song.ini e o audio (ogg, opus, mp3 ou
-wav). Pode organizar em subpastas (por jogo, estilo...): a lista do jogo
-segue as subpastas.
-
-Para usar uma biblioteca que ja esta em outro lugar do cartao, escreva o
-caminho da pasta, um por linha, em conf/arkhero/pastas.txt.
-TXT
+mkdir -p "$JOGO/songs"
+cp "$ROOT/packaging/PUT_YOUR_SONGS_HERE.txt" "$JOGO/songs/"
 
 # 2) binarios + libs, por arquitetura
 FOUND=0
@@ -68,33 +41,28 @@ for ARCH in aarch64 x86_64; do
     SRC="$ROOT/prebuilt/$ARCH"
     [ -f "$SRC/arkhero.$ARCH" ] || { echo "-- pulando $ARCH (sem build)"; continue; }
 
-    cp -a "$SRC/arkhero.$ARCH" "$PORT/"
-    mkdir -p "$PORT/libs.$ARCH"
-
-    # cp -L resolve o symlink: o resultado e UM arquivo regular chamado
-    # libSDL3.so.0, que e exatamente o SONAME que o binario procura.
-    #
-    # Nada de symlink aqui, por dois motivos:
-    #   - a particao de ROMS costuma ser FAT32/exFAT, que nao tem symlink;
-    #   - o zip desreferencia symlinks por padrao, o que duplicaria a lib.
-    cp -L "$SRC/libSDL3.so.0" "$PORT/libs.$ARCH/libSDL3.so.0"
-
-    chmod +x "$PORT/arkhero.$ARCH" "$PORT/libs.$ARCH/libSDL3.so.0"
+    cp -a "$SRC/arkhero.$ARCH" "$JOGO/"
+    mkdir -p "$JOGO/libs.$ARCH"
+    # cp -L resolve o symlink: UM arquivo regular chamado libSDL3.so.0, o
+    # SONAME que o binario procura (FAT32 nao tem symlink, e o zip duplicaria)
+    cp -L "$SRC/libSDL3.so.0" "$JOGO/libs.$ARCH/libSDL3.so.0"
+    chmod +x "$JOGO/arkhero.$ARCH"
     echo "++ incluido $ARCH"
     FOUND=$((FOUND + 1))
 done
-
 [ "$FOUND" -gt 0 ] || { echo "ERRO: nenhum binario em prebuilt/. Rode tools/docker_build.sh antes."; exit 1; }
 
-# 3) zip com a mesma estrutura que o PortMaster espera:
-#    a raiz do zip contem "Ark Hero.sh" e a pasta "arkhero/"
+# 3) o zip, como o tools/build_release.py do PortMaster-New monta: o script
+#    na raiz; dentro de arkhero/, os metadados (o README vira arkhero.md)
+cp "$PR/Ark Hero.sh" "$DIST/"
+cp -a "$JOGO" "$DIST/arkhero"
+cp "$PR/port.json" "$PR/gameinfo.xml" "$PR/screenshot.png" "$DIST/arkhero/"
+cp "$PR/README.md" "$DIST/arkhero/arkhero.md"
 ( cd "$DIST" && zip -r -q arkhero.zip "Ark Hero.sh" arkhero )
 
 echo
-echo "==> pacote pronto:"
-find "$DIST" -mindepth 1 -not -name arkhero.zip | sed "s|$ROOT/||" | sort
-echo
 echo "==> zip: dist/arkhero.zip  ($(du -h "$DIST/arkhero.zip" | cut -f1))"
+echo "==> pasta do pull request: dist/portmaster-pr/arkhero/"
 echo
 echo "Para instalar no console, copie para a particao de ROMS:"
 echo "  dist/Ark Hero.sh   ->  /roms/ports/"

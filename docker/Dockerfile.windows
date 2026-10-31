@@ -1,0 +1,24 @@
+# Ambiente de build do Ark Hero para Windows (64 bits), por compilação
+# cruzada: roda no Linux (amd64) e gera um .exe com o MinGW-w64.
+#
+# A SDL3 no Windows não precisa de nenhuma biblioteca de sistema para
+# compilar (usa só a API do Windows, que vem com o MinGW; o g++ é para uma
+# parte dela). O wine serve só para rodar os testes (test_game.exe) dentro do
+# container.
+FROM debian:bookworm
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc-mingw-w64-x86-64 \
+        g++-mingw-w64-x86-64 \
+        cmake \
+        ninja-build \
+        make \
+        pkg-config \
+        file \
+        ca-certificates \
+        wine64 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work

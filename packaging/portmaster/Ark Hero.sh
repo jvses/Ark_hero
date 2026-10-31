@@ -1,12 +1,7 @@
 #!/bin/bash
-# Ark Hero -- script de launch (padrao PortMaster)
-#
-# Regra do ambiente: este script so pode ESCREVER dentro de $GAMEDIR.
-# Leitura fora dele e permitida (importante para a biblioteca de musicas).
 
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 
-# Onde mora o PortMaster varia por firmware
 if [ -d "/opt/system/Tools/PortMaster/" ]; then
   controlfolder="/opt/system/Tools/PortMaster"
 elif [ -d "/opt/tools/PortMaster/" ]; then
@@ -17,58 +12,32 @@ else
   controlfolder="/roms/ports/PortMaster"
 fi
 
-# control.txt define $directory, $ESUDO, $DEVICE_ARCH, $CFW_NAME,
-# pm_message, pm_platform_helper, pm_finish, get_controls...
 source $controlfolder/control.txt
 [ -f "${controlfolder}/mod_${CFW_NAME}.txt" ] && source "${controlfolder}/mod_${CFW_NAME}.txt"
-
 get_controls
 
 GAMEDIR=/$directory/ports/arkhero
 CONFDIR="$GAMEDIR/conf"
+BINARY=arkhero.${DEVICE_ARCH}
 
 mkdir -p "$CONFDIR"
-cd "$GAMEDIR"
+cd $GAMEDIR
 
-# Tudo daqui pra frente vai pro log.txt, que e a unica janela de depuracao
-# que voce tem quando o jogo roda na mao de outra pessoa.
 > "$GAMEDIR/log.txt" && exec > >(tee "$GAMEDIR/log.txt") 2>&1
 
-# Qualquer coisa que a SDL ou o jogo queira gravar cai em conf/
+# options, accounts, records and controls go to conf/arkhero/
 export XDG_DATA_HOME="$CONFDIR"
-export XDG_CONFIG_HOME="$CONFDIR"
-export XDG_CACHE_HOME="$CONFDIR"
-
 export LD_LIBRARY_PATH="$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
 export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
-# o banco de mapeamentos do PortMaster: reconhece mais controles externos
-# (os que ainda faltarem: conf/arkhero/gamecontrollerdb.txt, lido pelo jogo)
+# extra mappings for USB controllers and guitars
 [ -f "$controlfolder/gamecontrollerdb.txt" ] && export SDL_GAMECONTROLLERCONFIG_FILE="$controlfolder/gamecontrollerdb.txt"
 export ARKHERO_FULLSCREEN=1
 
-BINARY="$GAMEDIR/arkhero.${DEVICE_ARCH}"
+$ESUDO chmod +x "$GAMEDIR/$BINARY"
 
-# --- diagnostico: enquanto o port for experimental, isso vale ouro ---
-echo "--- ambiente ---"
-echo "CFW        : ${CFW_NAME} ${CFW_VERSION}"
-echo "device     : ${DEVICE_NAME} (${DEVICE_ARCH})"
-echo "glibc CFW  : ${CFW_GLIBC}"
-ldd --version 2>/dev/null | head -1
-echo "binario    : $BINARY"
-echo "----------------"
+# no gptokeyb: the game reads the controllers itself and quits on Select+Start
+pm_platform_helper "$GAMEDIR/$BINARY"
 
-if [ ! -f "$BINARY" ]; then
-  pm_message "Erro: nao ha binario para ${DEVICE_ARCH} neste pacote."
-  sleep 5
-  exit 1
-fi
-
-$ESUDO chmod +x "$BINARY"
-
-# Sem gptokeyb: o jogo le o gamepad nativamente pela SDL.
-# Se um dia precisar de mapeamento pra teclado, e aqui que entra.
-pm_platform_helper "$BINARY"
-
-"$BINARY"
+./$BINARY
 
 pm_finish

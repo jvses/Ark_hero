@@ -184,6 +184,7 @@ Contas demais = Demasiadas cuentas
 todos prontos: escolha a música... = todos listos: elige la canción...
 recorde: %ld de %s (%s %s, %d%%%s) = récord: %ld de %s (%s %s, %d%%%s)
 Um controle desconectou: a partida pausou = Un control se desconectó: partida en pausa
+Um controle desconectou = Un control se desconectó
 Pronto = Listo
 Escrever o nome = Escribir el nombre
 [%s] joga no teclado = [%s] juega con teclado

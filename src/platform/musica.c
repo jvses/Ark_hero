@@ -1,4 +1,5 @@
 #include "platform/musica.h"
+#include "platform/pasta.h"
 
 #define PROFUNDIDADE_MAX 6   /* Artista/Álbum/Música/... */
 
@@ -24,15 +25,24 @@ void Musica_free_list(Musica *musicas, int n)
  * ------------------------------------------------------------------------- */
 static void com_barra(char *destino, size_t n, const char *pasta)
 {
-    const size_t t = SDL_strlen(pasta);
-    SDL_snprintf(destino, n, "%s%s", pasta, (t && pasta[t - 1] == '/') ? "" : "/");
+    SDL_strlcpy(destino, pasta, n);
+#ifdef SDL_PLATFORM_WINDOWS
+    for (char *c = destino; *c; c++)   /* C:\Songs -> C:/Songs: o resto do jogo só olha a '/' */
+        if (*c == '\\') *c = '/';
+#endif
+    const size_t t = SDL_strlen(destino);
+    if ((t == 0 || destino[t - 1] != '/') && t + 1 < n) SDL_strlcat(destino, "/", n);
 }
 
 static const char EXEMPLO_PASTAS[] =
     "# Ark Hero - pastas de musicas, uma por linha.\n"
     "# Alem destas, o jogo sempre procura em songs/ (dentro da pasta do jogo)\n"
     "# e em assets/musics/. Linhas com # sao ignoradas. Exemplo:\n"
+#ifdef SDL_PLATFORM_WINDOWS
+    "# C:\\Users\\voce\\Documents\\Clone Hero\\Songs\n";
+#else
     "# /roms/ports/clonehero/songs\n";
+#endif
 
 int Musica_roots(char raizes[][512], int max)
 {
@@ -41,7 +51,7 @@ int Musica_roots(char raizes[][512], int max)
     if (n < max) SDL_snprintf(raizes[n++], 512, "%ssongs/", base ? base : "");
     if (n < max) SDL_snprintf(raizes[n++], 512, "%sassets/musics/", base ? base : "");
 
-    char *pref = SDL_GetPrefPath("", "arkhero");
+    char *pref = Pasta_dados();
     if (!pref) return n;
     char arquivo[512];
     SDL_snprintf(arquivo, sizeof(arquivo), "%spastas.txt", pref);

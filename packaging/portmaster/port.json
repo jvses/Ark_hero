@@ -1,0 +1,33 @@
+{
+    "version": 4,
+    "name": "arkhero.zip",
+    "items": [
+        "Ark Hero.sh",
+        "arkhero"
+    ],
+    "items_opt": [],
+    "attr": {
+        "title": "Ark Hero",
+        "porter": [
+            "jvses"
+        ],
+        "desc": "A guitar rhythm game that plays the songs made by the Clone Hero community (.chart or .mid charts with ogg, opus, mp3 or wav audio). Up to 4 players on the built-in controls, USB controllers, USB guitars or a keyboard, in controller mode or guitar mode (frets + strum), with star power, whammy, sustains and HOPOs.",
+        "desc_md": null,
+        "inst": "Ready to run. No songs are included: copy Clone Hero song folders into ports/arkhero/songs/. Without songs, the Demonstration entry plays sample notes with a metronome.",
+        "inst_md": null,
+        "genres": [
+            "rhythm"
+        ],
+        "image": null,
+        "rtr": true,
+        "exp": false,
+        "runtime": [],
+        "store": [],
+        "availability": "full",
+        "reqs": [],
+        "arch": [
+            "aarch64"
+        ],
+        "min_glibc": "2.34"
+    }
+}
